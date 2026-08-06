@@ -1,0 +1,29 @@
+---
+title: "Loops: teach it the pattern"
+module: 2
+moduleTitle: "Loops & Patterns"
+order: 1
+duration: 15
+checkpoint: true
+summary: "Use a repeat loop to walk a zig-zag path with just three blocks."
+---
+import Term from '../../components/Term.astro';
+import RobotLab from '../../components/RobotLab.astro';
+
+Look at the arena below: the path to the target zig-zags — forward, turn, forward, turn… the *same two moves over and over*.
+
+You could drag eight blocks. Or you could teach the robot the **pattern** once and say "do that 4 times." That's a <Term id="loop">loop</Term>, and it's the single most-used idea in all of programming.
+
+<RobotLab
+  lessonId="m2-loops"
+  goal="reach-target"
+  blocks="loops"
+  required="controls_repeat_ext"
+  goalText="Reach the target pad using a repeat loop — this mission only counts if a loop does the work."
+  walls='[{"x":100,"y":170,"w":180,"h":16},{"x":80,"y":60,"w":180,"h":16}]'
+  target='{"x":300,"y":40,"r":28}'
+/>
+
+Notice the mission rule: even if you reach the pad, it only counts **with a loop**. Robots don't reward long ways of doing short things — and neither do we. 😄
+
+Tap **Show real code**: your one repeat block became a `for` loop in JavaScript and Python. Same pattern, three languages — blocks, JS, Python.

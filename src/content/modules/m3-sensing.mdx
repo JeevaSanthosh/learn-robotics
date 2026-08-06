@@ -1,0 +1,33 @@
+---
+title: "Your robot gets eyes"
+module: 3
+moduleTitle: "Sense & Decide"
+order: 1
+duration: 15
+checkpoint: false
+summary: "Meet the distance sensor and the if-block: the robot's first decisions."
+---
+import Term from '../../components/Term.astro';
+import RobotLab from '../../components/RobotLab.astro';
+import Quiz from '../../components/Quiz.astro';
+
+Until now, your robot followed orders blindly. Time to give it senses.
+
+The green **distance to wall** block is a <Term id="sensor">sensor</Term> — it reports a *number*: how many squares of empty space are ahead. Numbers alone do nothing; the magic is pairing them with a <Term id="conditional">conditional</Term> — an **if** block: *if the distance is bigger than 2 → move.*
+
+<RobotLab
+  lessonId="m3-sensing"
+  goal="free"
+  blocks="sensing"
+  goalText="Sandbox: drop the sensor block into an if-block's slot with a compare block. Watch the faint sensor ray on the robot's nose while it drives."
+  walls='[{"x":120,"y":60,"w":140,"h":16}]'
+/>
+
+<Quiz
+  quizId="m3-sensing"
+  questions={[
+    { "q": "What does the distance sensor give the robot?", "options": ["A picture of the wall", "A number: squares of free space ahead", "A beep"], "answer": 1, "why": "Sensors turn the world into numbers — that's all a robot brain can read." },
+    { "q": "An if-block runs its inside blocks…", "options": ["always", "only when its condition is true", "twice"], "answer": 1, "why": "That's the whole trick: true → do it, false → skip it." },
+    { "q": "Sense → decide → act. Which part is the if-block?", "options": ["sense", "decide", "act"], "answer": 1, "why": "Sensors sense, if-blocks decide, motors and LEDs act." }
+  ]}
+/>

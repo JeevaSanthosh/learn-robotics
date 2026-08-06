@@ -1,0 +1,32 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+export async function getStaticPaths() {
+  const lessons = await getCollection('modules');
+  return lessons.map((l) => ({ params: { slug: l.id }, props: { lesson: l, lessons } }));
+}
+
+const { lesson, lessons } = Astro.props;
+const { Content } = await render(lesson);
+
+const sorted = lessons.sort((a, b) => a.data.module - b.data.module || a.data.order - b.data.order);
+const idx = sorted.findIndex((l) => l.id === lesson.id);
+const prev = sorted[idx - 1];
+const next = sorted[idx + 1];
+---
+<Base title={lesson.data.title} lessonId={lesson.id}>
+  <article>
+    <p class="eyebrow">Module {lesson.data.module}: {lesson.data.moduleTitle} · ~{lesson.data.duration} min</p>
+    <h1>{lesson.data.title}</h1>
+    <Content />
+  </article>
+  <nav class="pager">
+    {prev ? <a href={`/modules/${prev.id}/`}>← {prev.data.title}</a> : <span />}
+    {next ? <a class="btn" href={`/modules/${next.id}/`}>Next: {next.data.title} →</a> : <a class="btn" href="/go-physical/">To the confidence gate →</a>}
+  </nav>
+</Base>
+
+<style>
+  .pager { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 2.5rem; flex-wrap: wrap; }
+</style>

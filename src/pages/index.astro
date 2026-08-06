@@ -1,0 +1,98 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import ProgressTrace from '../components/ProgressTrace.astro';
+
+const lessons = (await getCollection('modules')).sort(
+  (a, b) => a.data.module - b.data.module || a.data.order - b.data.order
+);
+
+const byModule = new Map();
+for (const l of lessons) {
+  if (!byModule.has(l.data.module)) byModule.set(l.data.module, { title: l.data.moduleTitle, lessons: [] });
+  byModule.get(l.data.module).lessons.push(l);
+}
+---
+<Base title="Roadmap">
+  <section class="hero">
+    <p class="eyebrow">A course for exactly one future roboticist</p>
+    <h1>Build robots. Start with zero.<br />Crash only pixels.</h1>
+    <p>
+      Short lessons, drag-and-drop blocks, a robot that lives in your browser.
+      No parts to buy, nothing to install. When you're ready — and the site will
+      tell you when — you graduate to a real robot on your desk.
+    </p>
+    <a class="btn" href="/modules/m1-meet/">▶ Start lesson 1 (10 min)</a>
+  </section>
+
+  {[...byModule.entries()].map(([num, mod]) => (
+    <section class="module card">
+      <p class="eyebrow">Module {num}</p>
+      <h2>{mod.title}</h2>
+      <ProgressTrace slugs={mod.lessons.map((l) => l.id)} />
+      <ol class="lesson-list">
+        {mod.lessons.map((l) => (
+          <li>
+            <a href={`/modules/${l.id}/`}>{l.data.title}</a>
+            <span class="meta">{l.data.duration} min{l.data.checkpoint ? ' · checkpoint' : ''}</span>
+            <p class="summary">{l.data.summary}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  ))}
+
+  <section class="module card gate-card">
+    <p class="eyebrow">After the confidence gate</p>
+    <h2>🔒 Go physical</h2>
+    <p>
+      Finish the checkpoint lessons and score 80%+ on the gate quiz, and this
+      unlocks: a real robot kit, what it costs, where to buy it, and how to build it.
+    </p>
+    <a href="/go-physical/">Check if it's unlocked →</a>
+  </section>
+
+  <section class="card">
+    <h2>Your progress lives in this browser</h2>
+    <p>No accounts here. Back it up if you switch devices or clear your browser:</p>
+    <div class="backup">
+      <button class="btn btn-quiet" id="export-progress">⬇ Export progress</button>
+      <label class="btn btn-quiet">⬆ Import progress<input type="file" id="import-progress" accept=".json" hidden /></label>
+    </div>
+    <div id="badges"></div>
+  </section>
+</Base>
+
+<script>
+  import { exportProgress, importProgress, load, BADGE_LABELS } from '../lib/progress.js';
+
+  document.getElementById('export-progress')?.addEventListener('click', exportProgress);
+  document.getElementById('import-progress')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) importProgress(file).then(() => location.reload()).catch(() => alert('That file did not look like a progress backup.'));
+  });
+
+  function paintBadges() {
+    const host = document.getElementById('badges');
+    if (!host) return;
+    const badges = load().badges;
+    host.innerHTML = badges.length
+      ? '<p class="eyebrow">Badges</p>' + badges.map((b) => `<p>${BADGE_LABELS[b] || b}</p>`).join('')
+      : '';
+  }
+  paintBadges();
+  window.addEventListener('lr-progress', paintBadges);
+</script>
+
+<style>
+  .hero { margin-bottom: 2rem; }
+  .hero h1 { margin-bottom: 0.4em; }
+  .module { margin-bottom: 1.4rem; }
+  .lesson-list { padding-left: 1.2rem; }
+  .lesson-list li { margin-bottom: 0.7rem; }
+  .lesson-list a { font-weight: 700; }
+  .meta { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); margin-left: 0.5rem; }
+  .summary { margin: 0.1rem 0 0; font-size: 0.92rem; color: var(--ink-soft); }
+  .gate-card { border-style: dashed; }
+  .backup { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+</style>

@@ -1,0 +1,29 @@
+{
+  "name": "learn-robotics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "freshness": "node scripts/freshness.mjs",
+    "verify": "node scripts/verify.mjs",
+    "test": "node scripts/test-interpreter.mjs"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^7.0.5",
+    "@fontsource/atkinson-hyperlegible": "^5.1.0",
+    "@fontsource/chakra-petch": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "astro": "^7.1.6",
+    "blockly": "^11.2.0",
+    "nanostores": "^0.11.3"
+  },
+  "devDependencies": {
+    "zod": "^3.24.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

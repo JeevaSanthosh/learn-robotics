@@ -1,0 +1,26 @@
+---
+// Self-report completion for READING lessons only. verify.mjs (C4) fails the
+// build if this ever appears in a checkpoint lesson — checkpoints must be
+// earned through a verified goal or quiz, not a button.
+const { lessonId } = Astro.props;
+---
+<div class="markdone" data-lesson={lessonId}>
+  <button class="btn done-btn">✔ I read this — mark it done</button>
+  <p class="done-msg" hidden>✅ Nice. This lesson is done.</p>
+</div>
+
+<script>
+  import { completeLesson, isComplete } from '../lib/progress.js';
+  for (const root of document.querySelectorAll('.markdone')) {
+    const id = root.dataset.lesson;
+    const btn = root.querySelector('.done-btn');
+    const msg = root.querySelector('.done-msg');
+    const show = () => { btn.hidden = true; msg.hidden = false; };
+    if (isComplete(id)) show();
+    btn.addEventListener('click', () => { completeLesson(id); show(); });
+  }
+</script>
+
+<style>
+  .markdone { margin: 2rem 0 0.5rem; }
+</style>

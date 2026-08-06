@@ -1,0 +1,75 @@
+---
+// Multiple-choice quiz. Questions come in as a JSON prop from the lesson MDX.
+// Records the score under quizId so the confidence gate can read it.
+// questions: [{ q, options: [..], answer: <index>, why }]
+const { quizId, questions } = Astro.props;
+---
+<section class="quiz card" data-quiz-id={quizId} data-questions={JSON.stringify(questions)}>
+  <p class="eyebrow">Checkpoint quiz</p>
+  <div class="q-host"></div>
+  <button class="btn check">Check answers</button>
+  <p class="result" role="status"></p>
+</section>
+
+<script>
+  import { recordQuiz, completeLesson } from '../lib/progress.js';
+
+  for (const root of document.querySelectorAll('.quiz')) {
+    const quizId = root.dataset.quizId;
+    const questions = JSON.parse(root.dataset.questions);
+    const host = root.querySelector('.q-host');
+
+    questions.forEach((item, qi) => {
+      const fs = document.createElement('fieldset');
+      const lg = document.createElement('legend');
+      lg.textContent = `${qi + 1}. ${item.q}`;
+      fs.appendChild(lg);
+      item.options.forEach((opt, oi) => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = `${quizId}-${qi}`;
+        input.value = String(oi);
+        label.append(input, ' ', opt);
+        fs.appendChild(label);
+      });
+      const why = document.createElement('p');
+      why.className = 'why';
+      why.hidden = true;
+      why.textContent = '💡 ' + item.why;
+      fs.appendChild(why);
+      host.appendChild(fs);
+    });
+
+    root.querySelector('.check').addEventListener('click', () => {
+      let score = 0;
+      questions.forEach((item, qi) => {
+        const fs = host.children[qi];
+        const picked = fs.querySelector('input:checked');
+        const ok = picked && Number(picked.value) === item.answer;
+        if (ok) score++;
+        fs.classList.toggle('right', !!ok);
+        fs.classList.toggle('wrong', !ok);
+        fs.querySelector('.why').hidden = !!ok;
+      });
+      recordQuiz(quizId, score, questions.length);
+      if (score / questions.length >= 0.8) completeLesson(quizId); // pass = lesson done
+      const result = root.querySelector('.result');
+      result.textContent =
+        score === questions.length
+          ? `🎉 ${score}/${questions.length} — perfect!`
+          : `${score}/${questions.length} — wrong ones show a hint. Fix and re-check!`;
+    });
+  }
+</script>
+
+<style>
+  .quiz { margin: 1.5rem 0; }
+  fieldset { border: 1.5px solid var(--grid); border-radius: var(--radius); margin: 0 0 1rem; }
+  legend { font-weight: 700; padding: 0 0.4rem; }
+  label { display: block; padding: 0.15rem 0; }
+  fieldset.right { border-color: var(--go); }
+  fieldset.wrong { border-color: var(--danger); }
+  .why { color: var(--ink-soft); font-size: 0.92rem; }
+  .result { font-weight: 700; min-height: 1.4em; }
+</style>

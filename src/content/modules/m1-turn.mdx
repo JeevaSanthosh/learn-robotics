@@ -1,0 +1,26 @@
+---
+title: "Drive to the target"
+module: 1
+moduleTitle: "First Sparks"
+order: 3
+duration: 15
+checkpoint: true
+summary: "Steer the robot onto the target pad using moves and turns."
+---
+import RobotLab from '../../components/RobotLab.astro';
+
+The robot always starts in the bottom-left corner, facing up. Your mission: park it on the dashed target pad.
+
+Plan it like directions to a friend: *go forward this much, turn, go forward again…*
+
+<RobotLab
+  lessonId="m1-turn"
+  goal="reach-target"
+  blocks="basic"
+  required="robot_turn"
+  goalText="Get the robot onto the target pad in the top-right area."
+  walls='[{"x":160,"y":120,"w":16,"h":180}]'
+  target='{"x":290,"y":70,"r":30}'
+/>
+
+Crashed into the wall? Great — that's data, not failure. Adjust and run again. Real roboticists do this all day.

@@ -1,0 +1,76 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Go physical">
+  <h1>Go physical 🤖</h1>
+
+  <section id="locked" class="card" hidden>
+    <h2>🔒 Not unlocked yet — and that's on purpose</h2>
+    <p>
+      This page recommends spending real money on a robot kit, so it opens only
+      when the simulator says you're ready. Here's exactly what's left:
+    </p>
+    <ul id="gate-checklist"></ul>
+    <p>Everything on the <a href="/">roadmap</a> still works meanwhile — the simulator isn't a consolation prize, it's the training ground.</p>
+  </section>
+
+  <section id="unlocked" hidden>
+    <div class="card">
+      <h2>🎉 Confidence gate: cleared</h2>
+      <p>You've proven the ideas work in your head. Time to make them work on a desk.</p>
+    </div>
+
+    <h2>The recommended kit</h2>
+    <p>
+      <strong>BBC micro:bit v2 + a Maqueen-style robot chassis.</strong>
+      Why this combo: the micro:bit runs the same blocks-to-Python bridge you
+      already know (via MakeCode), it's nearly indestructible, and the chassis
+      has the same two wheels + distance sensor + LEDs as your simulator robot.
+    </p>
+    <table class="card parts">
+      <thead><tr><th>Part</th><th>~Cost</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>micro:bit v2 (board only)</td><td>$18–20</td><td>microbit.org resellers</td></tr>
+        <tr><td>DFRobot Maqueen Plus chassis</td><td>$35–45</td><td>DFRobot / distributors</td></tr>
+        <tr><td>Micro-USB cable + 3×AA batteries</td><td>~$8</td><td>anywhere</td></tr>
+      </tbody>
+    </table>
+    <p class="eyebrow">Total: roughly $60–75. Prices drift — check the resources page for current links.</p>
+
+    <h2>Build steps</h2>
+    <ol class="card steps">
+      <li>Unbox and inspect: board, chassis, wheels, sensor. Nothing should rattle.</li>
+      <li>Slot the micro:bit into the chassis edge connector (it only fits one way).</li>
+      <li>Insert batteries; power on. The chassis LEDs should light.</li>
+      <li>Open <a href="https://makecode.microbit.org" rel="noopener">makecode.microbit.org</a> — it's the same block style you've been using.</li>
+      <li>Recreate Lesson 2: blink the onboard LED three times. Old mission, real hardware.</li>
+      <li>Then Lesson 3: drive forward, turn, stop before a wall using the real distance sensor.</li>
+    </ol>
+    <p>Full tutorials and videos for each step are on the <a href="/resources/">resources page</a>, dated and checked.</p>
+  </section>
+</Base>
+
+<script>
+  import { gateStatus, GATE } from '../lib/progress.js';
+
+  const s = gateStatus();
+  document.getElementById(s.open ? 'unlocked' : 'locked').hidden = false;
+  if (!s.open) {
+    const ul = document.getElementById('gate-checklist');
+    for (const c of GATE.requiredCheckpoints) {
+      const li = document.createElement('li');
+      const done = !s.missing.includes(c);
+      li.textContent = `${done ? '✅' : '⬜'} Checkpoint lesson: ${c}`;
+      ul.appendChild(li);
+    }
+    const li = document.createElement('li');
+    li.textContent = `${s.quizOk ? '✅' : '⬜'} Gate quiz ≥ 80% ${s.quiz ? `(best so far: ${s.quiz.score}/${s.quiz.total})` : '(not taken yet)'}`;
+    ul.appendChild(li);
+  }
+</script>
+
+<style>
+  .parts { border-collapse: collapse; width: 100%; }
+  .parts th, .parts td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--grid); }
+  .steps li { margin-bottom: 0.5rem; }
+</style>

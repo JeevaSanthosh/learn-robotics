@@ -1,0 +1,10 @@
+---
+// Inline glossary term with hover/focus tooltip.
+// Usage in MDX: <Term id="actuator">actuator</Term>
+// Definitions live in /public/glossary.json — one source of truth.
+import glossary from '../../public/glossary.json';
+const { id } = Astro.props;
+const entry = glossary[id];
+const def = entry ? entry.def : 'Definition coming soon.';
+---
+<span class="term" tabindex="0" data-def={def} aria-label={`${id}: ${def}`}><slot /></span>

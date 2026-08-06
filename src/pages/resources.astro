@@ -1,0 +1,33 @@
+---
+import Base from '../layouts/Base.astro';
+import resources from '../../public/resources.json';
+const modules = Object.entries(resources.modules);
+---
+<Base title="Resources">
+  <h1>Curated resources</h1>
+  <p>
+    Hand-picked external videos, docs, and tools — with dates, so you know
+    nothing here is stale. A robot (fittingly) re-checks this list every month
+    and a human approves any changes.
+  </p>
+  {modules.map(([mod, items]) => (
+    <section class="card res-mod">
+      <h2>Module {mod}</h2>
+      <ul>
+        {items.map((r) => (
+          <li>
+            <a href={r.url} rel="noopener">{r.title}</a>
+            <span class="meta">{r.type} · published {r.published} · last checked {r.checked}</span>
+            <p class="why">{r.why}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
+</Base>
+
+<style>
+  .res-mod { margin-bottom: 1.2rem; }
+  .meta { display: block; font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); }
+  .why { margin: 0.2rem 0 0.8rem; font-size: 0.92rem; }
+</style>

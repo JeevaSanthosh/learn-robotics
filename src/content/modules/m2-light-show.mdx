@@ -1,0 +1,26 @@
+---
+title: "Build a light show"
+module: 2
+moduleTitle: "Loops & Patterns"
+order: 2
+duration: 10
+checkpoint: false
+summary: "Loops + the LED + wait = rhythm. Make the robot flash a 6-blink pattern."
+---
+import RobotLab from '../../components/RobotLab.astro';
+
+Loops aren't just for moving. Anything the robot *does* can repeat — including its light.
+
+A blink is really four steps: **on → wait → off → wait**. Put those in a loop and you've built a rhythm machine.
+
+<RobotLab
+  lessonId="m2-light-show"
+  goal="blink:6"
+  blocks="loops"
+  required="controls_repeat_ext"
+  goalText="Make the LED blink 6 times — using a loop, not twelve dragged blocks."
+/>
+
+**Try this after:** make it blink *fast* three times then *slow* three times. (Hint: two loops, different wait times.) That pattern — short-short-long — is how real machines signal errors to humans. You've seen it on routers your whole life.
+
+**Optional side-quest 🟢 easy:** design a "heartbeat" — two quick blinks, long pause, repeat.
