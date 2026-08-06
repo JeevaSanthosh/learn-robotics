@@ -1,0 +1,25 @@
+---
+title: "Blink the LED"
+module: 1
+moduleTitle: "First Sparks"
+order: 2
+duration: 15
+checkpoint: true
+summary: "Your first program: make the robot's light blink three times."
+---
+import Term from '../../components/Term.astro';
+import RobotLab from '../../components/RobotLab.astro';
+
+Time to write your first program. Drag blocks from the tray into the workspace, snap them together top-to-bottom, and hit **Run**. The robot runs your blocks in order, like a recipe.
+
+One shortcut worth knowing: a <Term id="loop">loop</Term> repeats the same steps so you don't have to drag them three times. Try the `repeat` block!
+
+<RobotLab
+  lessonId="m1-blink"
+  goal="blink:3"
+  blocks="basic"
+  required="robot_led"
+  goalText="Make the LED blink ON and OFF three times. (Hint: on → wait → off → wait, inside a repeat block.)"
+/>
+
+When you're done, tap **Show real code** — that's your exact program written the way grown-up robots read it. Same idea, different spelling.

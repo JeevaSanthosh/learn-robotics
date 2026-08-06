@@ -1,0 +1,30 @@
+---
+title: "Stop before the wall"
+module: 3
+moduleTitle: "Sense & Decide"
+order: 2
+duration: 20
+checkpoint: true
+summary: "The robot must stop itself near the wall — sensor-decided, not step-counted."
+---
+import RobotLab from '../../components/RobotLab.astro';
+
+Here's the mission every robot vacuum, drone, and self-driving car starts with: **approach the wall, stop before touching it.**
+
+The catch: you could just count squares and move exactly that far. But that's *you* deciding, not the robot — move the wall and your program breaks. So this mission has rules:
+
+1. Get within about **1 square** of the wall.
+2. **No touching.** A bump fails the run.
+3. The **sensor block must make the decision** — the mission won't count without it.
+
+The cleanest tool is the **repeat until** block: *repeat until distance ≤ 1 → move a little.* Little steps, checking the sensor between each one.
+
+<RobotLab
+  lessonId="m3-wall-stop"
+  goal="near-wall"
+  blocks="sensing"
+  required="robot_distance"
+  goalText="Drive up close to the top wall and stop WITHOUT touching it, using the distance sensor."
+/>
+
+When it works, move an imaginary wall in your head: would your program still work if the wall were closer? Farther? *Yes* — because the robot is sensing, not memorizing. That's the difference between a program and a wind-up toy.

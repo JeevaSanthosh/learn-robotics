@@ -1,0 +1,30 @@
+---
+title: "The confidence gate quiz"
+module: 5
+moduleTitle: "Robot Brain"
+order: 3
+duration: 10
+checkpoint: true
+summary: "Ten questions across everything. Score 80%+ to unlock the hardware module."
+---
+import Quiz from '../../components/Quiz.astro';
+
+Ten questions, whole course. **8/10 or better** opens the Go Physical module — real parts, real costs, real robot. Wrong answers show hints; fix them and re-check as many times as you like. This isn't a test to fear, it's a checklist to beat.
+
+<Quiz
+  quizId="m5-gate-quiz"
+  questions={[
+    { "q": "A robot, in one line, is a machine that…", "options": ["looks like a human", "senses, decides, and acts in a loop", "runs on WiFi"], "answer": 1, "why": "Sense → decide → act. Everything else is bodywork." },
+    { "q": "Loops exist so you can…", "options": ["repeat a pattern without rewriting it", "make programs slower", "store numbers"], "answer": 0, "why": "Teach the pattern once, say how many times." },
+    { "q": "An if-block is the robot's…", "options": ["muscle", "decision", "battery"], "answer": 1, "why": "Conditions are how programs choose." },
+    { "q": "The distance sensor hands your program…", "options": ["a number", "a photo", "a map"], "answer": 0, "why": "Sensors turn the world into numbers a program can compare." },
+    { "q": "Why did counting squares fail the wall-stop mission?", "options": ["counting is slow", "move the wall and the program breaks — nothing was sensing", "loops can't count"], "answer": 1, "why": "Sensing adapts; memorizing doesn't." },
+    { "q": "A circuit is…", "options": ["a complete loop for electricity", "any battery", "a type of code"], "answer": 0, "why": "Break the loop anywhere and the flow stops." },
+    { "q": "Voltage : current is like…", "options": ["pressure : flow", "hose : water tap", "wheel : road"], "answer": 0, "why": "Voltage pushes, current flows." },
+    { "q": "Gearing a motor down (big gear driven by small) gives…", "options": ["more speed, less torque", "less speed, more torque", "more of both"], "answer": 1, "why": "It's always a trade — that's why it works." },
+    { "q": "A variable is…", "options": ["a named box holding a value", "a loop that never ends", "a sensor"], "answer": 0, "why": "Store it by name, read or change it anywhere." },
+    { "q": "The 'when Run is pressed' hat block is…", "options": ["a decoration", "an event that starts your stack", "a loop"], "answer": 1, "why": "Programs respond to happenings — buttons, timers, sensors. That's events." }
+  ]}
+/>
+
+Passed? Head to **Go Physical** — the door's open. 🚪

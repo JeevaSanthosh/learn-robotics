@@ -1,0 +1,68 @@
+---
+import '@fontsource/chakra-petch/500.css';
+import '@fontsource/chakra-petch/700.css';
+import '@fontsource/atkinson-hyperlegible/400.css';
+import '@fontsource/atkinson-hyperlegible/700.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '../styles/global.css';
+import ChatWidget from '../components/ChatWidget.astro';
+
+const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Learn robotics from zero — blocks first, simulator first, real robot later." />
+    <title>{title} · Learn Robotics</title>
+  </head>
+  <body>
+    <header class="site-head">
+      <nav class="wrap nav">
+        <a class="logo" href="/">⚙ Learn<span>Robotics</span></a>
+        <div class="links">
+          <a href="/">Roadmap</a>
+          <a href="/glossary/">Glossary</a>
+          <a href="/resources/">Resources</a>
+          <a href="/go-physical/">Go physical</a>
+        </div>
+      </nav>
+    </header>
+    <main class="wrap">
+      <slot />
+    </main>
+    <ChatWidget lessonId={lessonId} />
+  </body>
+</html>
+
+<style>
+  .site-head {
+    background: var(--card);
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 1.6rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+  }
+  .logo {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .logo span { color: var(--wire); }
+  .links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .links a { font-size: 0.95rem; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+</style>

@@ -1,0 +1,83 @@
+---
+// Floating "Ask the robot tutor" helper. Talks to /api/chat (a Cloudflare
+// Pages Function — see /functions/api/chat.js). The system prompt lives
+// server-side only; the browser sends just the question, short history,
+// and the current lesson id for context.
+const { lessonId = '' } = Astro.props;
+---
+<div class="chat" data-lesson={lessonId}>
+  <button class="btn chat-open" aria-expanded="false">🤖 Ask the tutor</button>
+  <div class="chat-panel card" hidden>
+    <div class="chat-log" aria-live="polite">
+      <p class="bot">Hi! Stuck on something? Ask me anything about this lesson — no such thing as a silly question.</p>
+    </div>
+    <form class="chat-form">
+      <input type="text" name="q" placeholder="e.g. what is a loop again?" autocomplete="off" maxlength="500" />
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll('.chat')) {
+    const openBtn = root.querySelector('.chat-open');
+    const panel = root.querySelector('.chat-panel');
+    const log = root.querySelector('.chat-log');
+    const form = root.querySelector('.chat-form');
+    const input = form.querySelector('input');
+    const history = []; // {role, content} — capped, server truncates again anyway
+
+    openBtn.addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+      openBtn.setAttribute('aria-expanded', String(!panel.hidden));
+      if (!panel.hidden) input.focus();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (!q) return;
+      input.value = '';
+      add('you', q);
+      const thinking = add('bot', '…');
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: q,
+            history: history.slice(-6),
+            lessonId: root.dataset.lesson || '',
+          }),
+        });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        thinking.textContent = data.answer || 'Hmm, I came back empty. Try asking another way?';
+        history.push({ role: 'user', content: q }, { role: 'assistant', content: thinking.textContent });
+      } catch {
+        thinking.textContent =
+          "I can't reach the tutor service right now. If you're running the site locally without the function, that's expected — deploy to Cloudflare Pages or run `npx wrangler pages dev`.";
+      }
+    });
+
+    function add(who, text) {
+      const p = document.createElement('p');
+      p.className = who;
+      p.textContent = text;
+      log.appendChild(p);
+      log.scrollTop = log.scrollHeight;
+      return p;
+    }
+  }
+</script>
+
+<style>
+  .chat { position: fixed; right: 1rem; bottom: 1rem; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
+  .chat-panel { width: min(340px, calc(100vw - 2rem)); }
+  .chat-log { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .chat-log p { margin: 0; padding: 0.45rem 0.65rem; border-radius: 8px; font-size: 0.92rem; }
+  .chat-log .bot { background: var(--paper); align-self: flex-start; }
+  .chat-log .you { background: var(--led-glow); align-self: flex-end; }
+  .chat-form { display: flex; gap: 0.4rem; }
+  .chat-form input { flex: 1; border: 1.5px solid var(--ink-soft); border-radius: 8px; padding: 0.45rem 0.6rem; font-family: var(--font-body); font-size: 0.95rem; }
+</style>

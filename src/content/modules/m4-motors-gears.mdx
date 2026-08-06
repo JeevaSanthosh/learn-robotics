@@ -1,0 +1,35 @@
+---
+title: "Muscle: motors, gears, and torque"
+module: 4
+moduleTitle: "Electricity & Muscle"
+order: 2
+duration: 15
+checkpoint: false
+summary: "Why robots trade speed for strength — and your first variable."
+---
+import Term from '../../components/Term.astro';
+import RobotLab from '../../components/RobotLab.astro';
+import Quiz from '../../components/Quiz.astro';
+
+A <Term id="motor">motor</Term> spins fast but weakly. A robot wheel needs the opposite: slower, stronger turning. The fix is one of the oldest tricks in engineering: <Term id="gear">gears</Term>.
+
+Mesh a small gear into a big one and you *trade*: the big gear turns slower but with more twisting strength — more <Term id="torque">torque</Term>. It's exactly a bike's low gear: your legs spin easily, the wheel turns with force, and you climb the hill. Speed and strength are a slider, not a menu — more of one is always less of the other.
+
+Your simulator has that slider too. The **set speed** block uses a <Term id="variable">variable</Term> — a named box holding a number the program can read and change.
+
+<RobotLab
+  lessonId="m4-motors-gears"
+  goal="free"
+  blocks="variables"
+  goalText="Sandbox: set speed to 3 and drive — zoomy but harder to park precisely. Set it to 1 and feel the control come back. That's the gear trade-off in your hands."
+  target='{"x":300,"y":60,"r":24}'
+/>
+
+<Quiz
+  quizId="m4-motors-gears"
+  questions={[
+    { "q": "Torque is…", "options": ["how fast something spins", "twisting strength", "a type of gear"], "answer": 1, "why": "Fast ≠ strong. Torque is the strength half." },
+    { "q": "Small gear drives a big gear. The big gear turns…", "options": ["faster, weaker", "slower, stronger", "exactly the same"], "answer": 1, "why": "The trade: lose speed, gain torque. Bikes, cars, and robot wheels all use it." },
+    { "q": "A variable is…", "options": ["a named box holding a value", "a kind of loop", "a wire"], "answer": 0, "why": "Name it, store a value, use it anywhere — like `speed`." }
+  ]}
+/>

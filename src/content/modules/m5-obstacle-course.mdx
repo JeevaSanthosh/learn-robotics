@@ -1,0 +1,33 @@
+---
+title: "Final mission: the obstacle course"
+module: 5
+moduleTitle: "Robot Brain"
+order: 2
+duration: 20
+checkpoint: true
+summary: "Everything at once: sense, decide, loop, act — navigate the maze to the pad."
+---
+import RobotLab from '../../components/RobotLab.astro';
+
+This is the one. A walled course, a target pad, and every block you've earned.
+
+The rule that makes it a *robotics* mission: **your program must use the distance sensor**. You can hard-code a path — but move one wall and hard-coded paths die. Sensor-driven robots adapt. Sense → decide → act, in a loop: the definition you met in lesson one, now built by your own hands.
+
+A strategy that works (there are others — find yours):
+
+1. Repeat until you're on the pad-ish side: **if** space ahead → move; **else** → turn.
+2. Blink the LED when you arrive, because victory laps matter.
+
+<RobotLab
+  lessonId="m5-obstacle-course"
+  goal="reach-target"
+  blocks="all"
+  required="robot_distance"
+  goalText="Reach the target pad through the maze. The sensor must be part of your program — that's what makes it a robot, not a wind-up toy."
+  walls='[{"x":80,"y":220,"w":200,"h":16},{"x":160,"y":100,"w":16,"h":120},{"x":240,"y":40,"w":16,"h":120}]'
+  target='{"x":310,"y":50,"r":26}'
+/>
+
+**Open-ended challenge 🟠 spicy:** solve it a second, completely different way. Then imagine the walls move every run — could you write one program that solves *any* maze? (That question has kept roboticists happily busy for fifty years.)
+
+Clear this and the gate quiz next door, and the hardware door unlocks. 🔓

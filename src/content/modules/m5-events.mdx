@@ -1,0 +1,26 @@
+---
+title: "Events: when things happen"
+module: 5
+moduleTitle: "Robot Brain"
+order: 1
+duration: 15
+checkpoint: false
+summary: "Programs don't just run — they respond. Meet the event block."
+---
+import Term from '../../components/Term.astro';
+import RobotLab from '../../components/RobotLab.astro';
+
+Real robot programs don't start "at the top." They wait for something to *happen* — a button press, a timer, a sensor tripping — and respond. Each happening is an <Term id="event">event</Term>.
+
+You've been using one all along without seeing it: every program so far ran *when you pressed Run*. Now the block for it exists — the hat-shaped **when ▶ Run is pressed** block. From here on, hang your program under a hat, like Scratch and micro:bit do. Stacks without a hat won't run.
+
+<RobotLab
+  lessonId="m5-events"
+  goal="reach-target"
+  blocks="all"
+  required="robot_start"
+  goalText="Under a 'when Run is pressed' hat: blink hello once, then drive to the target. No hat, no start!"
+  target='{"x":290,"y":80,"r":28}'
+/>
+
+On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.

@@ -1,0 +1,212 @@
+---
+// The interactive heart of a lesson: block editor on top, simulator below,
+// and a toggleable "what this looks like as real code" bridge panel.
+// Props:
+//   lessonId  — slug used for progress tracking
+//   goal      — 'blink3' | 'reach-target' | 'free'
+//   walls     — JSON string of extra wall rects for the arena
+//   target    — JSON string {x,y,r} for reach-target goals
+//   goalText  — human description shown above the Run button
+const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', blocks = 'all', required = '' } = Astro.props;
+---
+<section
+  class="robotlab card"
+  data-lesson={lessonId}
+  data-goal={goal}
+  data-walls={walls}
+  data-target={target}
+  data-blocks={blocks}
+  data-required={required}
+>
+  {goalText && <p class="goal"><span class="eyebrow">Your mission</span><br />{goalText}</p>}
+
+  <div class="lab-grid">
+    <div class="blockly-host" aria-label="Block editor"></div>
+    <div class="sim-side">
+      <canvas width="360" height="300" aria-label="Robot simulator"></canvas>
+      <div class="controls">
+        <button class="btn run">▶ Run</button>
+        <button class="btn btn-quiet reset">↺ Reset</button>
+        <button class="btn btn-quiet code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
+      </div>
+      <p class="status" role="status"></p>
+    </div>
+  </div>
+
+  <div class="code-bridge" hidden>
+    <p class="eyebrow">The same program as real code — blocks and code are two spellings of one idea.</p>
+    <div class="bridge-cols">
+      <div>
+        <h3>Python (MicroPython-style)</h3>
+        <pre class="py-out"><code></code></pre>
+      </div>
+      <div>
+        <h3>JavaScript (what the simulator runs)</h3>
+        <pre class="js-out"><code></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { defineRobotBlocks, toolboxFor, Blockly, javascriptGenerator, pythonGenerator } from '../lib/blocks.js';
+  import { BlockRunner } from '../lib/interpreter.js';
+  import { RobotSim } from '../lib/sim.js';
+  import { completeLesson } from '../lib/progress.js';
+
+  defineRobotBlocks();
+
+  for (const root of document.querySelectorAll('.robotlab')) {
+    const lessonId = root.dataset.lesson;
+    const goal = root.dataset.goal;
+    const walls = JSON.parse(root.dataset.walls || '[]');
+    const target = JSON.parse(root.dataset.target || 'null');
+
+    const ws = Blockly.inject(root.querySelector('.blockly-host'), {
+      toolbox: toolboxFor(root.dataset.blocks),
+      scrollbars: false,
+      trashcan: true,
+      renderer: 'zelos', // the rounded, Scratch-like renderer
+      zoom: { startScale: 0.85 },
+    });
+
+    const canvas = root.querySelector('canvas');
+    const sim = new RobotSim(canvas, { walls, target });
+    const status = root.querySelector('.status');
+    const runBtn = root.querySelector('.run');
+
+    // persist workspace per lesson so a 10-minute session picks up where it left off
+    const wsKey = `lr-ws-${lessonId}`;
+    try {
+      const saved = localStorage.getItem(wsKey);
+      if (saved) Blockly.serialization.workspaces.load(JSON.parse(saved), ws);
+    } catch {}
+    ws.addChangeListener(() => {
+      localStorage.setItem(wsKey, JSON.stringify(Blockly.serialization.workspaces.save(ws)));
+      renderBridge();
+    });
+
+    // code bridge panel
+    const bridge = root.querySelector('.code-bridge');
+    const toggle = root.querySelector('.code-toggle');
+    const pyOut = root.querySelector('.py-out code');
+    const jsOut = root.querySelector('.js-out code');
+    function renderBridge() {
+      if (bridge.hidden) return;
+      const py = pythonGenerator.workspaceToCode(ws) || '# drag blocks to see code';
+      const js = javascriptGenerator.workspaceToCode(ws) || '// drag blocks to see code';
+      pyOut.textContent = 'import time\n\n' + py;
+      jsOut.textContent = js;
+    }
+    toggle.addEventListener('click', () => {
+      bridge.hidden = !bridge.hidden;
+      toggle.setAttribute('aria-expanded', String(!bridge.hidden));
+      toggle.textContent = bridge.hidden ? '</> Show real code' : '</> Hide real code';
+      renderBridge();
+    });
+
+    // run learner blocks through the tree-walking interpreter (no eval — CSP-safe)
+    let running = false;
+    runBtn.addEventListener('click', async () => {
+      if (running) return;
+      running = true;
+      runBtn.disabled = true;
+      status.textContent = 'Running…';
+      sim.reset();
+      try {
+        await new BlockRunner(ws, sim).run();
+        checkGoal();
+      } catch (e) {
+        status.textContent = '🤔 ' + e.message;
+      } finally {
+        running = false;
+        runBtn.disabled = false;
+      }
+    });
+
+    root.querySelector('.reset').addEventListener('click', () => {
+      sim.stop();
+      setTimeout(() => sim.reset(), 50);
+      status.textContent = '';
+    });
+
+    // --- goal verification: outcome + required concepts, no shortcuts ------
+    const FRIENDLY = {
+      robot_distance: 'the “distance to wall” sensor block',
+      controls_repeat_ext: 'a repeat loop',
+      controls_whileUntil: 'a repeat-while/until loop',
+      controls_if: 'an if block',
+      robot_start: 'the “when ▶ Run is pressed” event block',
+      variables_set: 'a variable',
+      robot_set_speed: 'the “set speed” block',
+    };
+
+    function missingRequired() {
+      const need = (root.dataset.required || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const usedTypes = new Set(ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type));
+      return need.filter((t) => !usedTypes.has(t));
+    }
+
+    function outcomeMet() {
+      if (goal.startsWith('blink:')) {
+        const n = Number(goal.split(':')[1]);
+        return { done: sim.blinkCount >= n, hint: `LED blinked ${sim.blinkCount}/${n} times — keep going!` };
+      }
+      if (goal === 'reach-target')
+        return {
+          done: sim.reachedTarget,
+          hint: 'Not on the target pad yet — trace the path with your finger, then match it with blocks.',
+        };
+      if (goal === 'near-wall')
+        return {
+          done: !sim.bumped && sim.readDistance() < 1.2,
+          hint: sim.bumped
+            ? '💥 The robot bumped the wall. It should stop itself BEFORE touching — let the sensor decide.'
+            : 'The robot stopped too far away (or drove past). Get within about 1 square of the wall.',
+        };
+      return { done: false, hint: 'Program finished.' }; // 'free' labs never auto-complete
+    }
+
+    function checkGoal() {
+      if (goal === 'free') {
+        status.textContent = 'Program finished. Sandbox mode — experiment away!';
+        return;
+      }
+      const outcome = outcomeMet();
+      if (!outcome.done) {
+        status.textContent = outcome.hint;
+        return;
+      }
+      const missing = missingRequired();
+      if (missing.length) {
+        status.textContent =
+          '👀 The robot did it — but this mission is about ' +
+          missing.map((t) => FRIENDLY[t] || t).join(' and ') +
+          '. Rebuild your program using that, and it counts!';
+        return;
+      }
+      status.textContent = '🎉 Mission complete! Lesson marked done.';
+      completeLesson(lessonId);
+    }
+  }
+</script>
+
+<style>
+  .robotlab { margin: 1.5rem 0; }
+  .goal { margin-top: 0; }
+  .lab-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  .blockly-host { height: 340px; border: 1.5px solid var(--grid); border-radius: var(--radius); }
+  canvas {
+    width: 100%;
+    height: auto;
+    background: var(--card);
+    border: 1.5px solid var(--grid);
+    border-radius: var(--radius);
+  }
+  .controls { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+  .status { min-height: 1.4em; font-weight: 700; }
+  .bridge-cols { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 760px) {
+    .bridge-cols { grid-template-columns: 1fr 1fr; }
+  }
+</style>

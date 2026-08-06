@@ -1,0 +1,41 @@
+---
+// The signature PCB-trace progress bar. Pass the ordered lesson slugs of a
+// module; LEDs light up from localStorage as lessons complete.
+const { slugs = [], label = '' } = Astro.props;
+---
+<div class="trace-wrap">
+  {label && <span class="eyebrow">{label}</span>}
+  <div class="trace-progress" data-slugs={JSON.stringify(slugs)} aria-label="Module progress">
+    {slugs.map(() => (
+      <>
+        <span class="seg"></span>
+        <span class="led"></span>
+      </>
+    ))}
+  </div>
+  <p class="trace-count eyebrow" aria-live="polite"></p>
+</div>
+
+<script>
+  import { load } from '../lib/progress.js';
+
+  function paint() {
+    for (const bar of document.querySelectorAll('.trace-progress')) {
+      const slugs = JSON.parse(bar.dataset.slugs || '[]');
+      const done = load().completed;
+      const leds = bar.querySelectorAll('.led');
+      const segs = bar.querySelectorAll('.seg');
+      let count = 0;
+      slugs.forEach((slug, i) => {
+        const ok = done.includes(slug);
+        if (ok) count++;
+        leds[i]?.classList.toggle('done', ok);
+        segs[i]?.classList.toggle('done', ok);
+      });
+      const counter = bar.parentElement?.querySelector('.trace-count');
+      if (counter) counter.textContent = `${count}/${slugs.length} done`;
+    }
+  }
+  paint();
+  window.addEventListener('lr-progress', paint);
+</script>
