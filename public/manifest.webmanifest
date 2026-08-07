@@ -1,0 +1,9 @@
+{
+  "name": "Learn Robotics",
+  "short_name": "Robotics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef3f8",
+  "theme_color": "#eef3f8",
+  "description": "Learn robotics from zero — blocks first, simulator first, real robot later."
+}

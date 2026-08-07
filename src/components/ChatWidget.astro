@@ -1,68 +1,181 @@
 ---
-// Floating "Ask the robot tutor" helper. Talks to /api/chat (a Cloudflare
-// Pages Function — see /functions/api/chat.js). The system prompt lives
-// server-side only; the browser sends just the question, short history,
-// and the current lesson id for context.
+// Floating "Ask the robot tutor" helper. Talks to /api/chat (see
+// /functions/api/chat.js). The system prompt lives server-side only; the
+// browser sends the question, short history, the current lesson id, and —
+// new — a summary of the learner's current block program and simulator
+// state, so the tutor can answer "why doesn't MY robot stop?".
 const { lessonId = '' } = Astro.props;
 ---
 <div class="chat" data-lesson={lessonId}>
-  <button class="btn chat-open" aria-expanded="false">🤖 Ask the tutor</button>
-  <div class="chat-panel card" hidden>
-    <div class="chat-log" aria-live="polite">
-      <p class="bot">Hi! Stuck on something? Ask me anything about this lesson — no such thing as a silly question.</p>
+  <button class="btn chat-open" aria-expanded="false" aria-controls="chat-panel">
+    <span aria-hidden="true">🤖</span> Ask the tutor
+  </button>
+
+  <div class="chat-panel card" id="chat-panel" role="dialog" aria-label="Robot tutor" hidden>
+    <div class="chat-head">
+      <span class="eyebrow">Robot tutor</span>
+      <button class="chat-close" type="button" aria-label="Close tutor">✕</button>
     </div>
+
+    <div class="chat-log" aria-live="polite">
+      <p class="msg bot">Hi! Stuck on something? Ask me anything about this lesson — no such thing as a silly question.</p>
+    </div>
+
+    <div class="chips">
+      <button class="chip" type="button">Why doesn't my program work?</button>
+      <button class="chip" type="button">What should I try next?</button>
+      <button class="chip" type="button">Explain this lesson simply</button>
+    </div>
+
     <form class="chat-form">
-      <input type="text" name="q" placeholder="e.g. what is a loop again?" autocomplete="off" maxlength="500" />
-      <button class="btn" type="submit">Send</button>
+      <label class="visually-hidden" for="chat-q">Your question</label>
+      <input id="chat-q" type="text" name="q" placeholder="e.g. what is a loop again?" autocomplete="off" maxlength="500" />
+      <button class="btn btn-sm chat-send" type="submit" aria-label="Send">➤</button>
     </form>
+    <p class="chat-foot eyebrow"></p>
   </div>
 </div>
 
 <script>
+  import { askTutor, remainingToday } from '../lib/tutor.js';
+
   for (const root of document.querySelectorAll('.chat')) {
     const openBtn = root.querySelector('.chat-open');
+    const closeBtn = root.querySelector('.chat-close');
     const panel = root.querySelector('.chat-panel');
     const log = root.querySelector('.chat-log');
     const form = root.querySelector('.chat-form');
     const input = form.querySelector('input');
-    const history = []; // {role, content} — capped, server truncates again anyway
+    const sendBtn = root.querySelector('.chat-send');
+    const foot = root.querySelector('.chat-foot');
+    const history = [];
+    let busy = false;
 
-    openBtn.addEventListener('click', () => {
-      panel.hidden = !panel.hidden;
-      openBtn.setAttribute('aria-expanded', String(!panel.hidden));
-      if (!panel.hidden) input.focus();
+    function setOpen(open) {
+      panel.hidden = !open;
+      openBtn.setAttribute('aria-expanded', String(open));
+      root.classList.toggle('open', open);
+      if (open) {
+        input.focus();
+        paintFoot();
+      } else {
+        openBtn.focus();
+      }
+    }
+
+    openBtn.addEventListener('click', () => setOpen(panel.hidden));
+    closeBtn.addEventListener('click', () => setOpen(false));
+    panel.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); }
     });
 
-    form.addEventListener('submit', async (e) => {
+    for (const chip of root.querySelectorAll('.chip')) {
+      chip.addEventListener('click', () => {
+        input.value = chip.textContent;
+        form.requestSubmit();
+      });
+    }
+
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = input.value.trim();
-      if (!q) return;
+      if (!q || busy) return;
       input.value = '';
+      ask(q, 'hint');
+    });
+
+    async function ask(q, mode) {
+      busy = true;
+      sendBtn.disabled = true;
       add('you', q);
-      const thinking = add('bot', '…');
+      const bubble = add('bot', '');
+      bubble.classList.add('thinking');
+      bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+
+      let text = '';
       try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await askTutor(
+          {
             question: q,
             history: history.slice(-6),
             lessonId: root.dataset.lesson || '',
-          }),
-        });
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = await res.json();
-        thinking.textContent = data.answer || 'Hmm, I came back empty. Try asking another way?';
-        history.push({ role: 'user', content: q }, { role: 'assistant', content: thinking.textContent });
-      } catch {
-        thinking.textContent =
-          "I can't reach the tutor service right now. If you're running the site locally without the function, that's expected — deploy to Cloudflare Pages or run `npx wrangler pages dev`.";
+            mode,
+            context: readLabContext(),
+          },
+          (chunk) => {
+            text += chunk;
+            bubble.classList.remove('thinking');
+            bubble.textContent = text;
+            log.scrollTop = log.scrollHeight;
+          }
+        );
+
+        if (!text.trim()) {
+          bubble.textContent = 'Hmm, I came back empty. Try asking another way?';
+        } else {
+          history.push({ role: 'user', content: q }, { role: 'assistant', content: text });
+          if (mode === 'hint') addNudge(q);
+        }
+      } catch (err) {
+        bubble.classList.remove('thinking');
+        bubble.classList.add('error');
+        bubble.textContent = friendly(err);
+      } finally {
+        bubble.classList.remove('thinking');
+        busy = false;
+        sendBtn.disabled = false;
+        paintFoot();
+        log.scrollTop = log.scrollHeight;
       }
-    });
+    }
+
+    // Socratic by default: the first answer is a nudge, and the learner has
+    // to actively choose the full explanation. Keeps the tutor from just
+    // solving the lesson the moment it gets hard.
+    function addNudge(q) {
+      const wrap = document.createElement('p');
+      wrap.className = 'msg nudge';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = 'Still stuck — just explain it';
+      b.addEventListener('click', () => { wrap.remove(); ask(q, 'explain'); });
+      wrap.appendChild(b);
+      log.appendChild(wrap);
+    }
+
+    function friendly(err) {
+      const code = err?.code || String(err?.message || err);
+      // The server's own 429 text is already learner-friendly (either the
+      // per-IP rate limiter or "the free daily AI allowance is used up").
+      if (code === 'rate-limit') {
+        return err.serverMessage || 'Lots of questions at once — give it a few seconds and ask again.';
+      }
+      if (code === 'offline') return "You're offline — the tutor needs a connection. The lessons and simulator still work.";
+      if (code === 'daily-cap') return "That's the daily tutor limit for this browser. It resets tomorrow — everything else on the site keeps working.";
+      if (code === 'no-backend') return 'The tutor service is not configured yet. (Site owner: add the Workers AI binding named AI in the Cloudflare project.)';
+      if (code === 'local-dev') return "No tutor when running `astro dev`. Build, then `npx wrangler pages dev dist` to test it locally.";
+      return `The tutor didn't answer (${err?.message || code}). Try again in a moment.`;
+    }
+
+    // Pulls the learner's current program + simulator result from RobotLab,
+    // if this page has one. Registered on window by RobotLab.astro.
+    function readLabContext() {
+      try {
+        return window.__lrLab?.getContext?.() || null;
+      } catch {
+        return null;
+      }
+    }
+
+    function paintFoot() {
+      const left = remainingToday();
+      foot.textContent = left <= 10 ? `${left} tutor questions left today` : '';
+    }
 
     function add(who, text) {
       const p = document.createElement('p');
-      p.className = who;
+      p.className = `msg ${who}`;
       p.textContent = text;
       log.appendChild(p);
       log.scrollTop = log.scrollHeight;
@@ -72,12 +185,122 @@ const { lessonId = '' } = Astro.props;
 </script>
 
 <style>
-  .chat { position: fixed; right: 1rem; bottom: 1rem; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
-  .chat-panel { width: min(340px, calc(100vw - 2rem)); }
-  .chat-log { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
-  .chat-log p { margin: 0; padding: 0.45rem 0.65rem; border-radius: 8px; font-size: 0.92rem; }
-  .chat-log .bot { background: var(--paper); align-self: flex-start; }
-  .chat-log .you { background: var(--led-glow); align-self: flex-end; }
+  .chat {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+  /* When the panel is open on a phone the launcher just wastes space. */
+  .chat.open .chat-open { display: none; }
+
+  .chat-panel {
+    width: min(370px, calc(100vw - 2rem));
+    padding: 0.85rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid var(--ink);
+    box-shadow: 4px 4px 0 var(--hard-edge);
+  }
+  .chat-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .chat-close {
+    background: none;
+    border: 0;
+    color: var(--ink-soft);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.2rem 0.35rem;
+    border-radius: 6px;
+  }
+  .chat-close:hover { color: var(--ink); background: var(--card-sunk); }
+
+  .chat-log {
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+    background: var(--card-sunk);
+    border-radius: 8px;
+    padding: 0.5rem;
+  }
+  .msg {
+    margin: 0;
+    padding: 0.45rem 0.65rem;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    max-width: 92%;
+    white-space: pre-wrap;
+  }
+  .msg.bot { background: var(--card); align-self: flex-start; border: 1px solid var(--grid); }
+  .msg.you { background: var(--led-glow); color: var(--ink); align-self: flex-end; }
+  .msg.error {
+    background: transparent;
+    border: 1.5px dashed var(--danger);
+    color: var(--danger);
+  }
+  .msg.nudge { background: none; padding: 0.1rem 0; align-self: flex-start; }
+
+  /* typing indicator */
+  .dots i {
+    display: inline-block;
+    width: 6px; height: 6px;
+    margin-right: 3px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+    animation: blip 1s infinite ease-in-out;
+  }
+  .dots i:nth-child(2) { animation-delay: 0.15s; }
+  .dots i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes blip { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.5rem; }
+  .chip {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    background: var(--card);
+    color: var(--ink-soft);
+    border: 1px solid var(--grid);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--ink-soft); }
+
   .chat-form { display: flex; gap: 0.4rem; }
-  .chat-form input { flex: 1; border: 1.5px solid var(--ink-soft); border-radius: 8px; padding: 0.45rem 0.6rem; font-family: var(--font-body); font-size: 0.95rem; }
+  .chat-form input {
+    flex: 1;
+    min-width: 0;
+    background: var(--card);
+    color: var(--ink);
+    border: 1.5px solid var(--ink-soft);
+    border-radius: 8px;
+    padding: 0.45rem 0.6rem;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+  }
+  .chat-foot { margin: 0.4rem 0 0; min-height: 1em; }
+
+  /* On a phone the old widget covered the Next-lesson button. Dock it. */
+  @media (max-width: 560px) {
+    .chat { left: 0; right: 0; bottom: 0; align-items: stretch; gap: 0; }
+    .chat:not(.open) { left: auto; right: 1rem; bottom: 1rem; }
+    .chat.open .chat-panel {
+      width: 100%;
+      border-radius: var(--radius) var(--radius) 0 0;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+      border-bottom: 0;
+    }
+    .chat.open .chat-log { max-height: 40vh; }
+  }
 </style>

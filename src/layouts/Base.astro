@@ -15,9 +15,14 @@ const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Learn robotics from zero — blocks first, simulator first, real robot later." />
+    <meta name="theme-color" content="#eef3f8" />
     <title>{title} · Learn Robotics</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- render-blocking, external (CSP-safe): sets the theme before first paint -->
+    <script is:inline src="/theme.js"></script>
   </head>
   <body>
+    <a class="skip" href="#main">Skip to content</a>
     <header class="site-head">
       <nav class="wrap nav">
         <a class="logo" href="/">⚙ Learn<span>Robotics</span></a>
@@ -27,42 +32,100 @@ const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
           <a href="/resources/">Resources</a>
           <a href="/go-physical/">Go physical</a>
         </div>
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-label="Switch between light and dark mode"
+          title="Light / dark"
+        >
+          <span aria-hidden="true" class="tt-icon">◐</span>
+        </button>
       </nav>
     </header>
-    <main class="wrap">
+    <main class="wrap" id="main">
       <slot />
     </main>
     <ChatWidget lessonId={lessonId} />
+
+    <script>
+      // Theme toggle. The initial value is already applied by /theme.js.
+      const btn = document.getElementById('theme-toggle');
+      btn?.addEventListener('click', () => {
+        const root = document.documentElement;
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('lr-theme', next); } catch {}
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', next === 'dark' ? '#0e1826' : '#eef3f8');
+      });
+
+      // Offline support. Registration is best-effort: the site works fine
+      // without it, and it costs nothing (assets are already static).
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
+
+    <style>
+      .skip {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        background: var(--card);
+        padding: 0.6rem 1rem;
+        z-index: 100;
+        border: 2px solid var(--ink);
+        border-radius: var(--radius);
+      }
+      .skip:focus { left: 0.5rem; top: 0.5rem; }
+
+      .site-head {
+        background: var(--card);
+        border-bottom: 2px solid var(--ink);
+        margin-bottom: 1.6rem;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+      }
+      .logo {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 1.15rem;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .logo span { color: var(--wire); }
+      .links { display: flex; gap: 1rem; flex-wrap: wrap; }
+      .links a { font-size: 0.95rem; text-decoration: none; }
+      .links a:hover { text-decoration: underline; }
+
+      .theme-toggle {
+        background: transparent;
+        border: 1.5px solid var(--ink-soft);
+        color: var(--ink);
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        line-height: 1;
+        cursor: pointer;
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+      .theme-toggle:hover { border-color: var(--ink); }
+      :global([data-theme='dark']) .tt-icon { transform: rotate(180deg); display: inline-block; }
+    </style>
   </body>
 </html>
-
-<style>
-  .site-head {
-    background: var(--card);
-    border-bottom: 2px solid var(--ink);
-    margin-bottom: 1.6rem;
-    position: sticky;
-    top: 0;
-    z-index: 20;
-  }
-  .nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
-    gap: 0.8rem;
-    flex-wrap: wrap;
-  }
-  .logo {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.15rem;
-    color: var(--ink);
-    text-decoration: none;
-  }
-  .logo span { color: var(--wire); }
-  .links { display: flex; gap: 1rem; flex-wrap: wrap; }
-  .links a { font-size: 0.95rem; text-decoration: none; }
-  .links a:hover { text-decoration: underline; }
-</style>

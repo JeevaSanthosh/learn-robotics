@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import ProgressTrace from '../../components/ProgressTrace.astro';
 
 export async function getStaticPaths() {
   const lessons = await getCollection('modules');
@@ -14,10 +15,15 @@ const sorted = lessons.sort((a, b) => a.data.module - b.data.module || a.data.or
 const idx = sorted.findIndex((l) => l.id === lesson.id);
 const prev = sorted[idx - 1];
 const next = sorted[idx + 1];
+
+// Progress for THIS module, so the learner can see where they are without
+// going back to the roadmap.
+const siblings = sorted.filter((l) => l.data.module === lesson.data.module).map((l) => l.id);
 ---
 <Base title={lesson.data.title} lessonId={lesson.id}>
   <article>
     <p class="eyebrow">Module {lesson.data.module}: {lesson.data.moduleTitle} · ~{lesson.data.duration} min</p>
+    <ProgressTrace slugs={siblings} here={lesson.id} />
     <h1>{lesson.data.title}</h1>
     <Content />
   </article>
@@ -28,5 +34,14 @@ const next = sorted[idx + 1];
 </Base>
 
 <style>
-  .pager { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 2.5rem; flex-wrap: wrap; }
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2.5rem;
+    /* room for the docked chat sheet on phones */
+    margin-bottom: 3.5rem;
+    flex-wrap: wrap;
+  }
 </style>

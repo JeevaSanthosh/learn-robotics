@@ -1,47 +1,64 @@
 ---
-// The interactive heart of a lesson: block editor on top, simulator below,
-// and a toggleable "what this looks like as real code" bridge panel.
+// The interactive heart of a lesson: block editor beside the simulator,
+// a per-block help panel, and a toggleable "what this looks like as real
+// code" bridge that highlights the line belonging to the selected block.
 // Props:
 //   lessonId  — slug used for progress tracking
-//   goal      — 'blink3' | 'reach-target' | 'free'
+//   goal      — 'blink:N' | 'reach-target' | 'near-wall' | 'free'
 //   walls     — JSON string of extra wall rects for the arena
 //   target    — JSON string {x,y,r} for reach-target goals
 //   goalText  — human description shown above the Run button
 const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', blocks = 'all', required = '' } = Astro.props;
 ---
 <section
-  class="robotlab card"
+  class="robotlab card card-do bleed"
   data-lesson={lessonId}
   data-goal={goal}
   data-walls={walls}
   data-target={target}
   data-blocks={blocks}
   data-required={required}
+  data-goaltext={goalText}
 >
   {goalText && <p class="goal"><span class="eyebrow">Your mission</span><br />{goalText}</p>}
 
   <div class="lab-grid">
-    <div class="blockly-host" aria-label="Block editor"></div>
+    <div class="editor-side">
+      <div class="blockly-host" aria-label="Block editor"></div>
+      <div class="block-help" hidden>
+        <p class="eyebrow bh-name"></p>
+        <p class="bh-tip"></p>
+        <pre class="bh-code"><code></code></pre>
+      </div>
+    </div>
+
     <div class="sim-side">
       <canvas width="360" height="300" aria-label="Robot simulator"></canvas>
       <div class="controls">
         <button class="btn run">▶ Run</button>
         <button class="btn btn-quiet reset">↺ Reset</button>
-        <button class="btn btn-quiet code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
       </div>
       <p class="status" role="status"></p>
+      <div class="controls secondary">
+        <label class="autorun">
+          <input type="checkbox" class="autorun-box" checked />
+          Auto-run as I build
+        </label>
+        <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Real code</button>
+        <button class="btn btn-quiet btn-sm share">🔗 Share</button>
+      </div>
     </div>
   </div>
 
   <div class="code-bridge" hidden>
-    <p class="eyebrow">The same program as real code — blocks and code are two spellings of one idea.</p>
+    <p class="eyebrow">The same program as real code — blocks and code are two spellings of one idea. Click a block to light up its line.</p>
     <div class="bridge-cols">
-      <div>
-        <h3>Python (MicroPython-style)</h3>
+      <div class="bridge-col">
+        <h3>Python (MicroPython-style) <button class="btn btn-quiet btn-sm copy" data-copy="py">Copy</button></h3>
         <pre class="py-out"><code></code></pre>
       </div>
-      <div>
-        <h3>JavaScript (what the simulator runs)</h3>
+      <div class="bridge-col">
+        <h3>JavaScript (what the simulator runs) <button class="btn btn-quiet btn-sm copy" data-copy="js">Copy</button></h3>
         <pre class="js-out"><code></code></pre>
       </div>
     </div>
@@ -53,6 +70,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
   import { BlockRunner } from '../lib/interpreter.js';
   import { RobotSim } from '../lib/sim.js';
   import { completeLesson } from '../lib/progress.js';
+  import { encodeProgram, decodeProgram } from '../lib/share.js';
 
   defineRobotBlocks();
 
@@ -66,7 +84,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
       toolbox: toolboxFor(root.dataset.blocks),
       scrollbars: false,
       trashcan: true,
-      renderer: 'zelos', // the rounded, Scratch-like renderer
+      renderer: 'zelos',
       zoom: { startScale: 0.85 },
     });
 
@@ -74,63 +92,183 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
     const sim = new RobotSim(canvas, { walls, target });
     const status = root.querySelector('.status');
     const runBtn = root.querySelector('.run');
+    const autoBox = root.querySelector('.autorun-box');
 
-    // persist workspace per lesson so a 10-minute session picks up where it left off
+    // ---- load: shared link wins over the saved local workspace ----------
     const wsKey = `lr-ws-${lessonId}`;
-    try {
-      const saved = localStorage.getItem(wsKey);
-      if (saved) Blockly.serialization.workspaces.load(JSON.parse(saved), ws);
-    } catch {}
-    ws.addChangeListener(() => {
-      localStorage.setItem(wsKey, JSON.stringify(Blockly.serialization.workspaces.save(ws)));
+    (async () => {
+      const shared = await decodeProgram(location.hash);
+      try {
+        if (shared) {
+          Blockly.serialization.workspaces.load(shared, ws);
+          setStatus('Loaded a shared program — press ▶ Run to watch it.');
+          return;
+        }
+        const saved = localStorage.getItem(wsKey);
+        if (saved) Blockly.serialization.workspaces.load(JSON.parse(saved), ws);
+      } catch {}
+    })();
+
+    // ---- change handling: save, re-render bridge, maybe auto-run --------
+    let autoTimer;
+    ws.addChangeListener((e) => {
+      if (e && e.isUiEvent) {
+        if (e.type === Blockly.Events.SELECTED) paintBlockHelp();
+        return;
+      }
+      try {
+        localStorage.setItem(wsKey, JSON.stringify(Blockly.serialization.workspaces.save(ws)));
+      } catch {}
       renderBridge();
+      paintBlockHelp();
+
+      // MakeCode's best habit: the simulator reflects your program without
+      // you having to ask. Debounced so dragging doesn't thrash it.
+      if (autoBox.checked && !running) {
+        clearTimeout(autoTimer);
+        autoTimer = setTimeout(() => {
+          if (ws.getTopBlocks(true).some((b) => b.getDescendants(false).length > 1)) execute(true);
+        }, 900);
+      }
     });
 
-    // code bridge panel
+    // ---- per-block help (the VEXcode idea: help where your hand is) -----
+    const help = root.querySelector('.block-help');
+    const helpName = root.querySelector('.bh-name');
+    const helpTip = root.querySelector('.bh-tip');
+    const helpCode = root.querySelector('.bh-code code');
+
+    function selectedBlock() {
+      const sel = Blockly.getSelected?.() || Blockly.common?.getSelected?.();
+      return sel && sel.workspace === ws ? sel : null;
+    }
+
+    function paintBlockHelp() {
+      const b = selectedBlock();
+      if (!b) { help.hidden = true; highlight(null); return; }
+      help.hidden = false;
+      helpName.textContent = readableName(b);
+      helpTip.textContent = (typeof b.tooltip === 'function' ? b.tooltip() : b.tooltip) || 'Drag this into your program to use it.';
+      const snippet = safeBlockCode(b);
+      helpCode.textContent = snippet || '—';
+      highlight(snippet);
+    }
+
+    function readableName(b) {
+      const t = b.toString?.() || b.type;
+      return t.length > 60 ? t.slice(0, 57) + '…' : t;
+    }
+
+    function safeBlockCode(b) {
+      try {
+        const out = javascriptGenerator.blockToCode(b);
+        return (Array.isArray(out) ? out[0] : out || '').trim().split('\n')[0];
+      } catch {
+        return '';
+      }
+    }
+
+    // ---- code bridge ----------------------------------------------------
     const bridge = root.querySelector('.code-bridge');
     const toggle = root.querySelector('.code-toggle');
     const pyOut = root.querySelector('.py-out code');
     const jsOut = root.querySelector('.js-out code');
+    let lastJs = '';
+    let lastPy = '';
+
     function renderBridge() {
+      lastPy = 'import time\n\n' + (pythonGenerator.workspaceToCode(ws) || '# drag blocks to see code');
+      lastJs = javascriptGenerator.workspaceToCode(ws) || '// drag blocks to see code';
       if (bridge.hidden) return;
-      const py = pythonGenerator.workspaceToCode(ws) || '# drag blocks to see code';
-      const js = javascriptGenerator.workspaceToCode(ws) || '// drag blocks to see code';
-      pyOut.textContent = 'import time\n\n' + py;
-      jsOut.textContent = js;
+      pyOut.textContent = lastPy;
+      jsOut.textContent = lastJs;
     }
+
+    // Light up the JS line that belongs to the selected block. Not a full
+    // two-way editor, but it makes "blocks ARE code" visible rather than
+    // asserted.
+    function highlight(snippet) {
+      if (bridge.hidden || !snippet) { jsOut.textContent = lastJs; return; }
+      jsOut.textContent = '';
+      for (const line of lastJs.split('\n')) {
+        const el = document.createElement(line.includes(snippet) ? 'mark' : 'span');
+        el.textContent = line + '\n';
+        jsOut.appendChild(el);
+      }
+    }
+
     toggle.addEventListener('click', () => {
       bridge.hidden = !bridge.hidden;
       toggle.setAttribute('aria-expanded', String(!bridge.hidden));
-      toggle.textContent = bridge.hidden ? '</> Show real code' : '</> Hide real code';
+      toggle.innerHTML = bridge.hidden ? '&lt;/&gt; Real code' : '&lt;/&gt; Hide code';
       renderBridge();
+      paintBlockHelp();
     });
 
-    // run learner blocks through the tree-walking interpreter (no eval — CSP-safe)
+    for (const btn of root.querySelectorAll('.copy')) {
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.copy === 'py' ? lastPy : lastJs);
+          btn.textContent = 'Copied ✓';
+          setTimeout(() => (btn.textContent = 'Copy'), 1500);
+        } catch {
+          btn.textContent = 'Select & copy';
+        }
+      });
+    }
+
+    // ---- share by link (no backend, no account, no cost) ----------------
+    root.querySelector('.share').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      try {
+        const hash = await encodeProgram(Blockly.serialization.workspaces.save(ws));
+        const url = `${location.origin}${location.pathname}${hash}`;
+        await navigator.clipboard.writeText(url);
+        history.replaceState(null, '', hash);
+        btn.textContent = '🔗 Link copied';
+      } catch {
+        btn.textContent = 'Could not copy';
+      }
+      setTimeout(() => (btn.textContent = '🔗 Share'), 1800);
+    });
+
+    // ---- running --------------------------------------------------------
     let running = false;
-    runBtn.addEventListener('click', async () => {
+    let hasRun = false;
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+
+    async function execute(isAuto) {
       if (running) return;
       running = true;
       runBtn.disabled = true;
-      status.textContent = 'Running…';
+      root.classList.add('is-running');
+      setStatus(isAuto ? 'Auto-running…' : 'Running…');
       sim.reset();
       try {
         await new BlockRunner(ws, sim).run();
+        hasRun = true;
         checkGoal();
-      } catch (e) {
-        status.textContent = '🤔 ' + e.message;
+      } catch (err) {
+        setStatus('🤔 ' + err.message);
       } finally {
         running = false;
         runBtn.disabled = false;
+        root.classList.remove('is-running');
       }
-    });
+    }
+
+    runBtn.addEventListener('click', () => execute(false));
 
     root.querySelector('.reset').addEventListener('click', () => {
       sim.stop();
       setTimeout(() => sim.reset(), 50);
-      status.textContent = '';
+      setStatus('');
     });
 
-    // --- goal verification: outcome + required concepts, no shortcuts ------
+    // ---- goal verification: outcome + required concepts, no shortcuts ----
     const FRIENDLY = {
       robot_distance: 'the “distance to wall” sensor block',
       controls_repeat_ext: 'a repeat loop',
@@ -164,48 +302,132 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
             ? '💥 The robot bumped the wall. It should stop itself BEFORE touching — let the sensor decide.'
             : 'The robot stopped too far away (or drove past). Get within about 1 square of the wall.',
         };
-      return { done: false, hint: 'Program finished.' }; // 'free' labs never auto-complete
+      return { done: false, hint: 'Program finished.' };
     }
 
     function checkGoal() {
       if (goal === 'free') {
-        status.textContent = 'Program finished. Sandbox mode — experiment away!';
+        setStatus('Program finished. Sandbox mode — experiment away!');
         return;
       }
       const outcome = outcomeMet();
-      if (!outcome.done) {
-        status.textContent = outcome.hint;
-        return;
-      }
+      if (!outcome.done) { setStatus(outcome.hint); return; }
       const missing = missingRequired();
       if (missing.length) {
-        status.textContent =
+        setStatus(
           '👀 The robot did it — but this mission is about ' +
-          missing.map((t) => FRIENDLY[t] || t).join(' and ') +
-          '. Rebuild your program using that, and it counts!';
+            missing.map((t) => FRIENDLY[t] || t).join(' and ') +
+            '. Rebuild your program using that, and it counts!'
+        );
         return;
       }
-      status.textContent = '🎉 Mission complete! Lesson marked done.';
+      setStatus('🎉 Mission complete! Lesson marked done.');
       completeLesson(lessonId);
     }
+
+    // ---- keep Blockly correct across layout changes ---------------------
+    // The grid flips to two columns at 900px; Blockly measures its host once
+    // at inject time and renders garbage after a resize unless told.
+    const ro = new ResizeObserver(() => Blockly.svgResize(ws));
+    ro.observe(root.querySelector('.blockly-host'));
+
+    // ---- expose context to the AI tutor ---------------------------------
+    // This is what lets "why doesn't my robot stop?" get a real answer.
+    // Registered as a list rather than a single global so a lesson with two
+    // labs reports the one the learner is actually looking at.
+    const labs = (window.__lrLabs = window.__lrLabs || []);
+    labs.push({
+      el: root,
+      read: () => ({
+        code: javascriptGenerator.workspaceToCode(ws),
+        blocks: ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type),
+        goal: root.dataset.goaltext || goal,
+        status: status.textContent,
+        ran: hasRun,
+      }),
+    });
+
+    window.__lrLab = {
+      getContext() {
+        if (!labs.length) return null;
+        // whichever lab is closest to the middle of the viewport
+        const mid = window.innerHeight / 2;
+        const best = labs
+          .map((l) => {
+            const r = l.el.getBoundingClientRect();
+            return { l, d: Math.abs(r.top + r.height / 2 - mid) };
+          })
+          .sort((a, b) => a.d - b.d)[0];
+        return best.l.read();
+      },
+    };
+
+    renderBridge();
   }
 </script>
 
 <style>
-  .robotlab { margin: 1.5rem 0; }
+  .robotlab { margin: 1.8rem 0; }
   .goal { margin-top: 0; }
+
   .lab-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
-  .blockly-host { height: 340px; border: 1.5px solid var(--grid); border-radius: var(--radius); }
+  /* The lab used to be locked to one column inside a 46rem reading
+     measure, so a desktop showed a 340px editor above a small canvas with
+     empty gutters either side. It now breaks out (.bleed) and goes
+     side-by-side, editor wider than the arena. */
+  @media (min-width: 900px) {
+    .lab-grid { grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr); align-items: start; }
+    .blockly-host { height: 460px; }
+  }
+
+  .blockly-host {
+    height: 360px;
+    border: 1.5px solid var(--grid);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
   canvas {
     width: 100%;
     height: auto;
     background: var(--card);
     border: 1.5px solid var(--grid);
     border-radius: var(--radius);
+    transition: border-color 120ms ease;
   }
-  .controls { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
-  .status { min-height: 1.4em; font-weight: 700; }
+  .is-running canvas { border-color: var(--led); }
+
+  .controls { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; align-items: center; }
+  .controls.secondary { margin-top: 0.5rem; }
+  .autorun {
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+  }
+  .status { min-height: 1.4em; font-weight: 700; margin: 0.6rem 0 0; }
+
+  .block-help {
+    margin-top: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--card-sunk);
+    border-radius: var(--radius);
+    border: 1px solid var(--grid);
+  }
+  .block-help p { margin: 0 0 0.3rem; font-size: 0.88rem; }
+  .bh-code { margin: 0; padding: 0.45rem 0.6rem; font-size: 0.78rem; }
+
   .bridge-cols { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  .bridge-col h3 { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }
+  .py-out mark, .js-out mark {
+    background: var(--led);
+    color: #17293e;
+    display: inline-block;
+    width: 100%;
+    border-radius: 3px;
+  }
   @media (min-width: 760px) {
     .bridge-cols { grid-template-columns: 1fr 1fr; }
   }

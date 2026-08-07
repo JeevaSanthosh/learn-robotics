@@ -28,13 +28,17 @@ a check so you know it worked before moving on. Total: ~60 minutes.
 5. Run the quality gates (the project's acceptance loop):
    ```
    npm run build     # must end with "Complete!"
-   npm run verify    # must end with "All 60 conditions pass."
-   npm test          # must end with "interpreter runtime tests pass"
+   npm run verify    # must end with "All N conditions pass." (N is ~60 and grows with resources)
+   npm test          # must end with "share/stream tests pass"
    ```
 
-> **Note:** the AI chat helper will show its "no backend configured" message
-> locally. That's expected — the `/api/chat` function only runs on Cloudflare
-> (Part E). Everything else works fully offline.
+   Run `npm run build` *before* `npm run verify` — the verifier inspects `dist/`
+   to confirm no inline `<script>` slipped into the HTML (see Troubleshooting).
+
+> **Note:** under `npm run dev` the tutor says *"No tutor when running astro dev"*.
+> That's expected — the `/api/chat` function only runs on Cloudflare (Part E), or
+> locally via `npx wrangler pages dev dist`. Everything else works fully offline,
+> including the simulator, dark mode, and share links.
 
 **Check:** simulator runs, progress fills after completing the blink mission, all three commands pass.
 
@@ -103,7 +107,14 @@ Then open the site's chat bubble and ask the same thing.
 
 ## Part F — Rate-limit the chat endpoint (5 min)
 
-The endpoint URL is public in your site's JS; this stops drive-by quota abuse.
+The endpoint URL is public in your site's JS; this stops drive-by quota abuse and
+protects the free daily AI allowance.
+
+> **If you deploy with `npx wrangler deploy` instead of classic Pages, skip this
+> part.** That path already rate-limits in code: the `CHAT_LIMITER` binding in
+> `wrangler.jsonc` and `worker/index.js` allows ~10 requests/minute per IP with no
+> dashboard rule. The steps below are only for the classic Pages path, which does
+> not run `worker/index.js`.
 
 1. Cloudflare dashboard → your Pages domain → **Security → WAF → Rate limiting rules → Create rule** (the free plan includes one rule).
 2. Configure:
@@ -157,13 +168,18 @@ Run once on a phone and once on a computer:
 
 - **Adding a lesson:** copy any `.mdx` in `src/content/modules/`, set `module`/`order`/`duration`/`checkpoint` frontmatter, push. Roadmap, pager, and progress trace update automatically. If it's a checkpoint, add its slug to `GATE` in `src/lib/progress.js` — `npm run verify` fails until the gate and lessons agree.
 - **Monthly:** review the freshness PR (5 minutes: open preview, confirm links are good and age-appropriate, merge).
-- **Adding a block:** define it in `src/lib/blocks.js` (block + both display generators), add a case in `src/lib/interpreter.js`, add a test in `scripts/test-interpreter.mjs`.
+- **Adding a block:** define it in `src/lib/blocks.js` (block + both display generators), add a case in `src/lib/interpreter.js`, add a test in `scripts/test-interpreter.mjs`. Give it a `tooltip` — the lab's per-block help panel shows it verbatim when the block is selected.
+- **Anything that must run before first paint** (theme, feature flags) goes in `public/` as a plain `.js` file and is referenced with `<script is:inline src="/file.js">`. An inline snippet will be blocked by the CSP. See `public/theme.js`.
 
 ## Troubleshooting
 
 | Symptom | Cause → Fix |
 |---|---|
-| Run button does nothing in production | CSP was edited — restore `script-src 'self'` in `public/_headers`; never add `unsafe-eval` (the interpreter doesn't need it) |
+| **A button does nothing in production but works in `npm run dev`** | Almost certainly a CSP-blocked inline script. Check the browser console for a Content-Security-Policy violation. Confirm `vite.build.assetsInlineLimit: 0` is still in `astro.config.mjs` and that `npm run verify` passes `C-INLINE`. `npm run dev` doesn't apply `_headers`, which is why it only breaks live. |
+| Run button does nothing in production | Also check CSP wasn't edited — restore `script-src 'self'` in `public/_headers`; never add `unsafe-eval` (the interpreter doesn't need it) |
+| Chat answers arrive all at once, not streamed | Something between you and Cloudflare is buffering `text/event-stream`. Harmless — the answer is identical. |
+| Chat: "the free daily AI allowance is used up" | Workers AI's 10,000 Neurons/day is spent; resets 00:00 UTC. Working as designed — it fails instead of billing you. |
+| Chat: "That's the daily tutor limit for this browser" | The 40/day client guard in `src/lib/tutor.js`. Raise `DAILY_CAP` there if you want. |
 | Chat: "No AI backend configured" | Part E binding/secret missing, or no redeploy after adding it |
 | Chat: HTTP 403 | Custom domain without `ALLOWED_ORIGIN` (Part H) |
 | Chat: HTTP 429 | Rate limit working as intended — wait a minute |
