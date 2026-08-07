@@ -7,6 +7,7 @@ duration: 20
 checkpoint: true
 summary: "The robot must stop itself near the wall — sensor-decided, not step-counted."
 ---
+import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
 
 Here's the mission every robot vacuum, drone, and self-driving car starts with: **approach the wall, stop before touching it.**
@@ -28,3 +29,15 @@ The cleanest tool is the **repeat until** block: *repeat until distance ≤ 1 �
 />
 
 When it works, move an imaginary wall in your head: would your program still work if the wall were closer? Farther? *Yes* — because the robot is sensing, not memorizing. That's the difference between a program and a wind-up toy.
+
+## Under the hood: what the sensor can't see
+
+Your program compares a reading against a number — that number is the <Term id="threshold">threshold</Term>. Choosing it well is most of the skill, and it depends on things the sensor never tells you:
+
+- **Stopping distance.** The robot keeps moving after you decide to stop. Faster robot, bigger threshold.
+- **Check rate.** Between two checks the robot is blind. This loop is <Term id="polling">polling</Term>: read, decide, move, repeat. Move too far per pass and you can sail straight past your own threshold.
+- **Angle.** A distance sensor measures along one narrow line. A wall approached at a sharp angle reflects the signal *away* instead of back, so the reading stays large right up until the crash.
+
+That last one is why real robots carry several sensors pointing different ways. A single sensor doesn't give you "the distance to the wall" — it gives you "the distance along this one line, if something reflects".
+
+**The habit worth forming:** whenever a sensor-driven robot misbehaves, ask the three questions in order — *was it checked often enough, was the threshold big enough, and could the sensor actually see the thing?*

@@ -4,7 +4,7 @@ module: 4
 moduleTitle: "Electricity & Muscle"
 order: 2
 duration: 15
-checkpoint: false
+checkpoint: true
 summary: "Why robots trade speed for strength — and your first variable."
 ---
 import Term from '../../components/Term.astro';
@@ -18,11 +18,49 @@ Mesh a small gear into a big one and you *trade*: the big gear turns slower but 
 Your simulator has that slider too. The **set speed** block uses a <Term id="variable">variable</Term> — a named box holding a number the program can read and change.
 
 <RobotLab
-  lessonId="m4-motors-gears"
+  lessonId="m4-motors-sandbox"
   goal="free"
   blocks="variables"
   goalText="Sandbox: set speed to 3 and drive — zoomy but harder to park precisely. Set it to 1 and feel the control come back. That's the gear trade-off in your hands."
   target='{"x":300,"y":60,"r":24}'
+/>
+
+## Under the hood: gear ratios are just division
+
+"Slower but stronger" is the feel. The number behind it is the <Term id="gear-ratio">gear ratio</Term>, and you get it by dividing teeth:
+
+```
+ratio = teeth on driven gear ÷ teeth on driving gear
+```
+
+A 10-tooth motor gear turning a 40-tooth wheel gear is 40 ÷ 10 = **4:1**. The wheel turns **4× slower** and with roughly **4× more torque**. Reverse them and you get 1:4 — four times faster, a quarter the strength.
+
+There is no free lunch here, and the reason is <Term id="power">power</Term>:
+
+```
+power ≈ torque × speed
+```
+
+Gears slide the balance between torque and speed. They never increase the product. If a robot can't climb a ramp, gearing down 4:1 will get it up — and it will also crawl on the flat afterwards. That trade is the entire job of a drivetrain designer.
+
+**Working it out for a real robot:** say your motor spins 200 rpm and you want the wheel at 50 rpm. You need 200 ÷ 50 = 4:1, so pair a 10-tooth with a 40-tooth. You've just done drivetrain design.
+
+## Under the hood: how "set speed" actually works
+
+A motor has no volume knob. It is on or off. So how does *set speed to 2* mean anything?
+
+The microcontroller switches the motor on and off **very fast** — thousands of times a second — and varies how much of each cycle is "on". That fraction is called the duty cycle, and the technique is <Term id="pwm">PWM</Term>. 50% on means roughly half power; the motor's own inertia smooths the pulsing into steady spinning.
+
+So the `speed` <Term id="variable">variable</Term> in your program becomes a duty-cycle percentage on real hardware. The block you've been dragging maps to a real, specific electrical behaviour.
+
+<RobotLab
+  lessonId="m4-motors-gears"
+  goal="reach-target"
+  blocks="variables"
+  required="robot_set_speed"
+  goalText="Checkpoint: reach the target pad, and do it using the set speed block. Fast is easy to start and hard to stop — find a speed you can actually steer."
+  walls='[{"x":110,"y":150,"w":170,"h":16}]'
+  target='{"x":300,"y":60,"r":26}'
 />
 
 <Quiz
@@ -30,6 +68,9 @@ Your simulator has that slider too. The **set speed** block uses a <Term id="var
   questions={[
     { "q": "Torque is…", "options": ["how fast something spins", "twisting strength", "a type of gear"], "answer": 1, "why": "Fast ≠ strong. Torque is the strength half." },
     { "q": "Small gear drives a big gear. The big gear turns…", "options": ["faster, weaker", "slower, stronger", "exactly the same"], "answer": 1, "why": "The trade: lose speed, gain torque. Bikes, cars, and robot wheels all use it." },
-    { "q": "A variable is…", "options": ["a named box holding a value", "a kind of loop", "a wire"], "answer": 0, "why": "Name it, store a value, use it anywhere — like `speed`." }
+    { "q": "A variable is…", "options": ["a named box holding a value", "a kind of loop", "a wire"], "answer": 0, "why": "Name it, store a value, use it anywhere — like `speed`." },
+    { "q": "A 12-tooth gear drives a 36-tooth gear. The ratio is…", "options": ["3:1 — three times slower, more torque", "1:3 — three times faster, less torque", "36:12 — no change in speed"], "answer": 0, "why": "36 ÷ 12 = 3. Driven divided by driving." },
+    { "q": "You gear a robot down 4:1 to climb a ramp. On flat ground it will…", "options": ["go four times faster", "go about four times slower", "go the same speed"], "answer": 1, "why": "Power ≈ torque × speed. Gears move the balance; they don't add power." },
+    { "q": "On real hardware, 'set speed to 2' works by…", "options": ["sending less voltage continuously", "switching the motor on and off very fast (PWM)", "using a smaller motor"], "answer": 1, "why": "Duty cycle. On/off thousands of times a second, and inertia smooths it out." }
   ]}
 />

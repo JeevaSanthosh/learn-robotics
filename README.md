@@ -19,17 +19,20 @@ nothing here costs money to run (see **Cost** below).
 | Hosting | **Cloudflare Pages** | Free, static, and `/functions` gives us a same-origin AI proxy |
 | AI tutor | Pages Function → Workers AI (or Groq) | Streams answers; sees the learner's current program; system prompt + limits live server-side; key (if any) never ships to the browser |
 | Offline | Service worker (`public/sw.js`) + web manifest | Lessons and the simulator keep working on a plane; `/api/*` is never cached |
+| Assessment | Procedural generator (`src/lib/assessment.js`) | Fresh questions every attempt, answer key computed not written — see **Assessment** below |
 | Freshness | GitHub Actions monthly cron → PR | LLM proposes, zod + domain allowlist validates, a human merges |
 
 ## Repository map
 
 ```
 src/content/modules/   ← lessons (MDX + frontmatter). Add a file = add a lesson.
-src/pages/             ← roadmap (index), glossary, resources, go-physical, lesson route
+src/pages/             ← roadmap (index), progress, assessment, glossary, resources,
+                         go-physical, lesson route
 src/components/        ← RobotLab, Quiz, Term, ProgressTrace, ChatWidget
 src/lib/               ← sim.js (robot), blocks.js (Blockly defs + generators), progress.js,
                          interpreter.js (block-tree runner), tutor.js (chat transport),
-                         share.js (program-in-a-URL encoding)
+                         share.js (program-in-a-URL encoding),
+                         assessment.js (procedural question generator)
 functions/api/chat.js  ← AI tutor proxy (Pages Function; also imported by worker/index.js)
 worker/index.js        ← entry for the `wrangler deploy` path; adds per-IP rate limiting
 public/theme.js        ← render-blocking dark/light bootstrap (external on purpose — see CSP note)
@@ -70,6 +73,10 @@ npx wrangler pages dev dist   # after `npm run build`, to test the chat function
 > `<script is:inline src="/file.js">` — see `public/theme.js`.
 
 ## Deploying (Cloudflare Pages)
+
+**First time?** `SETUP.md` is the click-by-click walkthrough (Cloudflare dashboard,
+bindings, secrets, verification checklist). This section is the short version for
+people who already know the platform.
 
 1. Push this repo to GitHub.
 2. Cloudflare dashboard → Workers & Pages → Create → Pages → connect the repo.
@@ -144,6 +151,53 @@ Extra arena walls via the `walls` prop (JSON array of `{x,y,w,h}`). The `require
 prop (comma-separated block types) additionally demands the lesson's *concept* was
 used, so a goal can't be brute-forced past the idea it exists to teach.
 
+## Progress tracking
+
+Two surfaces, one store (`src/lib/progress.js`, localStorage only, no accounts):
+
+- **Inline** — the PCB-trace bar on the roadmap and at the top of every lesson,
+  with the current lesson marked.
+- **`/progress`** — the dashboard: overall completion, active days, gate status,
+  per-module lesson state, checkpoint quiz scores, badges, assessment history,
+  and a **topic mastery** breakdown derived from assessment answers, sorted
+  weakest-first so it says what to revisit rather than just what you scored.
+
+Backup lives here too. localStorage is fragile; export before switching devices.
+
+## Assessment
+
+`/assessment` offers three levels, and generates a **fresh five-question paper on
+every attempt**:
+
+| Level | Tests | Example |
+|---|---|---|
+| Easy | recall | "Is a motor an input or an output?" |
+| Medium | apply one step | "12-tooth gear drives a 36-tooth gear — what's the ratio?" |
+| Hard | trace & debug | "Repeat 3×: [move 2, turn right]. Where does it finish?" |
+
+**The questions are procedurally generated, not AI-generated.** That is a
+deliberate choice, and the reasoning is worth keeping:
+
+1. **Correctness.** An assessment is the one place a hallucinated answer key does
+   real damage — it teaches the wrong thing with authority. Every template here
+   *computes* its answer; the trace questions literally run the same walk the
+   simulator does, checked against an independent implementation in
+   `scripts/test-assessment.mjs`.
+2. **Cost.** Workers AI's free allocation is shared with the tutor. A generated
+   paper per attempt would drain it; this costs nothing.
+3. **Offline.** The service worker keeps lessons working on a plane. Questions
+   generated in-browser keep working there too.
+
+Uniqueness comes from parameterisation: numbers, programs, option order, and
+template selection are all randomised, no template repeats within a paper, and
+the correct answer's position is uniformly distributed (tested — a learner who
+always picks B cannot beat chance).
+
+Answering feeds `topicStats`, which is what drives the mastery view on
+`/progress`. **Rule of thumb for contributors: if the assessment tests it, a
+lesson must teach it.** Adding the Ohm's law and gear-ratio questions is exactly
+what exposed those gaps in Module 4.
+
 ## The confidence gate
 
 Defined in **one place**: `GATE` in `src/lib/progress.js`.
@@ -161,7 +215,7 @@ localStorage; encourage an export before switching devices.
 
 ## Verification loop
 
-`npm run verify` checks ~60 acceptance conditions (curriculum coverage, every
+`npm run verify` checks ~70 acceptance conditions (curriculum coverage, every
 lesson completable, gate integrity, anti-cheat goal rules, resource allowlist,
 glossary completeness, no eval in client code, and `C-INLINE` — no CSP-blocked
 inline scripts in the build). The exact count moves as resources are added, so
@@ -169,8 +223,14 @@ treat the number as informational and the pass/fail as the contract.
 
 `npm run verify` reads `dist/`, so **run `npm run build` first** (CI already does).
 
-`npm test` runtime-tests the block interpreter and the share-link/stream parsing
-headlessly. All of it runs in CI on every push — the project is only "done" when
+`npm test` runtime-tests the block interpreter, the share-link/stream parsing, the
+assessment generator (answer keys, uniqueness, answer-position fairness), and a
+jsdom pass that loads the **built** pages with the **built** CSS and clicks through
+the chat panel, glossary filter, tooltips, assessment, and progress dashboard.
+
+> jsdom does **not** model the user-agent stylesheet origin, so it cannot see a
+> component rule out-ranking `[hidden]`. Condition `C-HIDDEN` is the detector for
+> that; the DOM tests cover event wiring. All of it runs in CI on every push — the project is only "done" when
 all conditions pass, by construction.
 
 ## Security notes

@@ -144,6 +144,57 @@ const shown = (win, el) => win.getComputedStyle(el).display !== 'none';
   }
 }
 
+// ----------------------------------------------------------- assessment
+{
+  const win = await loadPage('assessment/index.html', [bundle('assessment')]);
+  const doc = win.document;
+  const exam = doc.getElementById('exam');
+  const click = (el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+
+  t('D19 exam starts hidden', !shown(win, exam));
+
+  const hard = doc.querySelector('.level[data-difficulty="hard"]');
+  click(hard);
+  t('D20 choosing a level reveals the exam', shown(win, exam));
+
+  const qs = [...doc.querySelectorAll('#questions fieldset')];
+  t('D21 five questions are rendered', qs.length === 5, `got ${qs.length}`);
+  t('D22 every question offers options', qs.every((f) => f.querySelectorAll('input[type=radio]').length >= 3));
+
+  // submitting with blanks must warn, not score
+  click(doc.getElementById('submit'));
+  t('D23 blank answers are refused, not graded',
+    /unanswered/i.test(doc.getElementById('result').textContent));
+
+  // answer everything correctly is impossible to know from the DOM, so just
+  // answer the first option of each and confirm it grades and explains
+  for (const f of qs) f.querySelector('input[type=radio]').checked = true;
+  click(doc.getElementById('submit'));
+  t('D24 a completed paper is graded', /\d\/5/.test(doc.getElementById('result').textContent));
+  t('D25 explanations are shown for every question',
+    doc.querySelectorAll('#review .explain').length === 5);
+  t('D26 a retry option appears', shown(win, doc.getElementById('again-row')));
+
+  // a fresh paper must not be the identical paper
+  const before = qs.map((f) => f.querySelector('legend').textContent).join('|');
+  click(doc.getElementById('again'));
+  const after = [...doc.querySelectorAll('#questions fieldset legend')].map((l) => l.textContent).join('|');
+  t('D27 "new questions" actually produces a different paper', before !== after);
+  t('D28 the score line resets on a new paper', doc.getElementById('result').textContent === '');
+}
+
+// ------------------------------------------------------------- progress
+{
+  const win = await loadPage('progress/index.html', [bundle('progress')]);
+  const doc = win.document;
+  t('D29 progress page reports a percentage', /%$/.test(doc.getElementById('pct').textContent));
+  t('D30 every lesson is listed with a state marker',
+    doc.querySelectorAll('.lesson-list li .tick').length >= 12);
+  t('D31 gate status is reported', /Locked|Open/.test(doc.getElementById('stat-gate').textContent));
+  t('D32 empty states are friendly, not blank',
+    doc.querySelectorAll('.muted').length >= 3);
+}
+
 console.log(pass.join('\n'));
 if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} DOM test(s) failing.`); process.exit(1); }
 console.log(`\n✓ ${pass.length} DOM integration tests pass`);

@@ -176,3 +176,82 @@ browser. jsdom therefore gives a **false pass** on B1. `C-HIDDEN` is the real
 detector; the DOM tests cover event wiring, not cascade.
 
 Verified: 63 conditions ✓ · 6 interpreter + 11 share/stream + 18 DOM tests ✓
+
+---
+
+# Feature pass: progress, assessment, module depth
+
+## Progress tracking — new `/progress` dashboard
+
+Progress data existed but had no home: badges sat at the bottom of the roadmap
+and everything else was invisible. The dashboard now shows overall completion,
+active days, gate status, per-module lesson state, checkpoint quiz scores,
+badges, assessment history, and **topic mastery** — accuracy per topic across
+every assessment answer, sorted weakest-first, so it tells the learner what to
+revisit rather than just what they scored.
+
+`src/lib/progress.js` gains `recordAssessment`, `topicMastery`,
+`bestAssessment`, and three assessment badges. State shape is additive; existing
+saved progress loads unchanged.
+
+## Assessment — new `/assessment` page
+
+Three levels, five questions, **a fresh paper every attempt**.
+
+| Level | Tests |
+|---|---|
+| Easy | recall — do you know what the words mean |
+| Medium | apply — given a rule, predict one step |
+| Hard | trace & debug — run it in your head, then find the fault |
+
+**Questions are procedurally generated, not AI-generated** — a deliberate call:
+
+- *Correctness.* An assessment is the one place a hallucinated answer key does
+  real damage. Every template computes its own answer; trace questions run the
+  same walk as the simulator.
+- *Cost.* Workers AI's free allocation is shared with the tutor; a generated
+  paper per attempt would drain it. This costs nothing.
+- *Offline.* Works with the service worker, on a plane.
+
+Uniqueness is parameterisation: numbers, programs, option order and template
+choice all randomised, no template repeated within a paper.
+
+`scripts/test-assessment.mjs` (13 tests) checks 6,000 generated questions for
+well-formedness, verifies trace answers against an **independent**
+implementation of the robot walk, re-derives every arithmetic key, and asserts
+the correct answer's position is uniformly distributed — a learner who always
+picks B must not beat chance.
+
+## Module depth
+
+Building the assessment exposed that it tested things no lesson taught. Rule
+adopted: **if the assessment tests it, a lesson must teach it.**
+
+- **m4-circuits** — Ohm's law (`I = V ÷ R`) with worked numbers, a
+  what-changes-if table, and why every LED needs a series resistor. +3 quiz questions.
+- **m4-motors-gears** — gear ratio as division with a worked drivetrain example,
+  `power ≈ torque × speed` as the reason there is no free lunch, and how
+  "set speed" becomes PWM duty cycle on real hardware. +3 quiz questions.
+  **Now a checkpoint** with a verified `robot_set_speed` mission — Module 4 was
+  previously the only module a learner could pass through without demonstrating
+  anything. Added to `GATE.requiredCheckpoints`.
+- **m3-wall-stop** — threshold choice, polling blindness between checks, and why
+  an angled wall defeats a single distance sensor.
+- **m5-events** — polling vs interrupts, with a comparison table and the design
+  rule for choosing between them.
+
+Glossary grew 15 → 23 terms (resistance, ohms-law, gear-ratio, power, polling,
+interrupt, threshold, pwm).
+
+## Bugs found and fixed during this pass
+
+- **Lab id collision.** The new Module 4 checkpoint initially reused
+  `m4-motors-gears` alongside the existing sandbox lab — two labs sharing one
+  `localStorage` workspace key, silently overwriting each other. Worse, the
+  checkpoint's completion would have marked a slug the gate never checks.
+  New condition `C-LABIDS` fails CI on duplicate lab ids, and on any checkpoint
+  lesson with no completion path bound to its own slug.
+- **Missing MDX imports** in two lessons — caught by the build, not by review.
+
+Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
+32 DOM tests ✓

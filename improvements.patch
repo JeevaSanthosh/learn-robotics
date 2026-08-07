@@ -1,49 +1,63 @@
-From f0151c8eb4ad0666f76a5354a9097d14396ce275 Mon Sep 17 00:00:00 2001
+From 4614ab732fac1fcd2d8a333382241db780970eb6 Mon Sep 17 00:00:00 2001
 From: c <a@b>
 Date: Fri, 7 Aug 2026 13:32:23 +0000
 Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
  overhaul
 
 ---
- CHANGES.md                         | 178 ++++++
- README.md                          | 117 +++-
- SETUP.md                           |  32 +-
- astro.config.mjs                   |  12 +
- functions/api/chat.js              |  99 +++-
- package-lock.json                  | 867 +++++++++++++++++++----------
- package.json                       |   3 +-
- public/_headers                    |   8 +-
- public/manifest.webmanifest        |   9 +
- public/sw.js                       |  56 ++
- public/theme.js                    |  13 +
- scripts/test-dom.mjs               | 149 +++++
- scripts/test-new.mjs               |  45 ++
- scripts/verify.mjs                 | 143 +++++
- src/components/ChatWidget.astro    | 299 ++++++++--
- src/components/ProgressTrace.astro |  12 +-
- src/components/RobotLab.astro      | 327 +++++++++--
- src/components/Term.astro          |  64 ++-
- src/layouts/Base.astro             | 127 +++--
- src/lib/share.js                   |  62 +++
- src/lib/tutor.js                   | 132 +++++
- src/pages/modules/[...slug].astro  |  17 +-
- src/styles/global.css              | 119 +++-
- 23 files changed, 2412 insertions(+), 478 deletions(-)
+ CHANGES.md                              | 257 +++++++
+ README.md                               | 179 ++++-
+ SETUP.md                                |  32 +-
+ astro.config.mjs                        |  12 +
+ functions/api/chat.js                   |  99 ++-
+ package-lock.json                       | 867 ++++++++++++++++--------
+ package.json                            |   3 +-
+ public/_headers                         |   8 +-
+ public/glossary.json                    |  42 +-
+ public/manifest.webmanifest             |   9 +
+ public/sw.js                            |  56 ++
+ public/theme.js                         |  13 +
+ scripts/test-assessment.mjs             | 145 ++++
+ scripts/test-dom.mjs                    | 200 ++++++
+ scripts/test-new.mjs                    |  45 ++
+ scripts/verify.mjs                      | 171 +++++
+ src/components/ChatWidget.astro         | 299 ++++++--
+ src/components/ProgressTrace.astro      |  12 +-
+ src/components/RobotLab.astro           | 327 +++++++--
+ src/components/Term.astro               |  64 +-
+ src/content/modules/m3-wall-stop.mdx    |  13 +
+ src/content/modules/m4-circuits.mdx     |  26 +-
+ src/content/modules/m4-motors-gears.mdx |  47 +-
+ src/content/modules/m5-events.mdx       |  14 +
+ src/layouts/Base.astro                  | 129 +++-
+ src/lib/assessment.js                   | 388 +++++++++++
+ src/lib/progress.js                     |  63 +-
+ src/lib/share.js                        |  62 ++
+ src/lib/tutor.js                        | 132 ++++
+ src/pages/assessment.astro              | 205 ++++++
+ src/pages/modules/[...slug].astro       |  17 +-
+ src/pages/progress.astro                | 232 +++++++
+ src/styles/global.css                   | 119 +++-
+ 33 files changed, 3794 insertions(+), 493 deletions(-)
  create mode 100644 CHANGES.md
  create mode 100644 public/manifest.webmanifest
  create mode 100644 public/sw.js
  create mode 100644 public/theme.js
+ create mode 100644 scripts/test-assessment.mjs
  create mode 100644 scripts/test-dom.mjs
  create mode 100644 scripts/test-new.mjs
+ create mode 100644 src/lib/assessment.js
  create mode 100644 src/lib/share.js
  create mode 100644 src/lib/tutor.js
+ create mode 100644 src/pages/assessment.astro
+ create mode 100644 src/pages/progress.astro
 
 diff --git a/CHANGES.md b/CHANGES.md
 new file mode 100644
-index 0000000..7c93203
+index 0000000..3b8766a
 --- /dev/null
 +++ b/CHANGES.md
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,257 @@
 +# Improvements pass
 +
 +Based on `main` @ `a7655f8` (includes the Workers-native rate limiting from PR #5).
@@ -222,8 +236,87 @@ index 0000000..7c93203
 +detector; the DOM tests cover event wiring, not cascade.
 +
 +Verified: 63 conditions ✓ · 6 interpreter + 11 share/stream + 18 DOM tests ✓
++
++---
++
++# Feature pass: progress, assessment, module depth
++
++## Progress tracking — new `/progress` dashboard
++
++Progress data existed but had no home: badges sat at the bottom of the roadmap
++and everything else was invisible. The dashboard now shows overall completion,
++active days, gate status, per-module lesson state, checkpoint quiz scores,
++badges, assessment history, and **topic mastery** — accuracy per topic across
++every assessment answer, sorted weakest-first, so it tells the learner what to
++revisit rather than just what they scored.
++
++`src/lib/progress.js` gains `recordAssessment`, `topicMastery`,
++`bestAssessment`, and three assessment badges. State shape is additive; existing
++saved progress loads unchanged.
++
++## Assessment — new `/assessment` page
++
++Three levels, five questions, **a fresh paper every attempt**.
++
++| Level | Tests |
++|---|---|
++| Easy | recall — do you know what the words mean |
++| Medium | apply — given a rule, predict one step |
++| Hard | trace & debug — run it in your head, then find the fault |
++
++**Questions are procedurally generated, not AI-generated** — a deliberate call:
++
++- *Correctness.* An assessment is the one place a hallucinated answer key does
++  real damage. Every template computes its own answer; trace questions run the
++  same walk as the simulator.
++- *Cost.* Workers AI's free allocation is shared with the tutor; a generated
++  paper per attempt would drain it. This costs nothing.
++- *Offline.* Works with the service worker, on a plane.
++
++Uniqueness is parameterisation: numbers, programs, option order and template
++choice all randomised, no template repeated within a paper.
++
++`scripts/test-assessment.mjs` (13 tests) checks 6,000 generated questions for
++well-formedness, verifies trace answers against an **independent**
++implementation of the robot walk, re-derives every arithmetic key, and asserts
++the correct answer's position is uniformly distributed — a learner who always
++picks B must not beat chance.
++
++## Module depth
++
++Building the assessment exposed that it tested things no lesson taught. Rule
++adopted: **if the assessment tests it, a lesson must teach it.**
++
++- **m4-circuits** — Ohm's law (`I = V ÷ R`) with worked numbers, a
++  what-changes-if table, and why every LED needs a series resistor. +3 quiz questions.
++- **m4-motors-gears** — gear ratio as division with a worked drivetrain example,
++  `power ≈ torque × speed` as the reason there is no free lunch, and how
++  "set speed" becomes PWM duty cycle on real hardware. +3 quiz questions.
++  **Now a checkpoint** with a verified `robot_set_speed` mission — Module 4 was
++  previously the only module a learner could pass through without demonstrating
++  anything. Added to `GATE.requiredCheckpoints`.
++- **m3-wall-stop** — threshold choice, polling blindness between checks, and why
++  an angled wall defeats a single distance sensor.
++- **m5-events** — polling vs interrupts, with a comparison table and the design
++  rule for choosing between them.
++
++Glossary grew 15 → 23 terms (resistance, ohms-law, gear-ratio, power, polling,
++interrupt, threshold, pwm).
++
++## Bugs found and fixed during this pass
++
++- **Lab id collision.** The new Module 4 checkpoint initially reused
++  `m4-motors-gears` alongside the existing sandbox lab — two labs sharing one
++  `localStorage` workspace key, silently overwriting each other. Worse, the
++  checkpoint's completion would have marked a slug the gate never checks.
++  New condition `C-LABIDS` fails CI on duplicate lab ids, and on any checkpoint
++  lesson with no completion path bound to its own slug.
++- **Missing MDX imports** in two lessons — caught by the build, not by review.
++
++Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
++32 DOM tests ✓
 diff --git a/README.md b/README.md
-index 2fe20ad..61c8aa3 100644
+index 2fe20ad..f7316f2 100644
 --- a/README.md
 +++ b/README.md
 @@ -4,6 +4,11 @@ A static, single-learner robotics course: Scratch-like blocks first, an in-brows
@@ -238,25 +331,30 @@ index 2fe20ad..61c8aa3 100644
  ## Stack
  
  | Concern | Tool | Why |
-@@ -12,7 +17,8 @@ monthly self-refreshing resource list.
+@@ -12,21 +17,33 @@ monthly self-refreshing resource list.
  | Blocks | [Blockly](https://developers.google.com/blockly) (zelos renderer) | Scratch-like feel; **one block program → JS (simulator) + Python (bridge)** |
  | Simulator | Custom canvas (`src/lib/sim.js`) | Differential-drive robot, distance raycast, LED — no heavy deps |
  | Hosting | **Cloudflare Pages** | Free, static, and `/functions` gives us a same-origin AI proxy |
 -| AI tutor | Pages Function → Workers AI (or Groq) | System prompt + limits live server-side; key (if any) never ships to the browser |
 +| AI tutor | Pages Function → Workers AI (or Groq) | Streams answers; sees the learner's current program; system prompt + limits live server-side; key (if any) never ships to the browser |
 +| Offline | Service worker (`public/sw.js`) + web manifest | Lessons and the simulator keep working on a plane; `/api/*` is never cached |
++| Assessment | Procedural generator (`src/lib/assessment.js`) | Fresh questions every attempt, answer key computed not written — see **Assessment** below |
  | Freshness | GitHub Actions monthly cron → PR | LLM proposes, zod + domain allowlist validates, a human merges |
  
  ## Repository map
-@@ -21,12 +27,20 @@ monthly self-refreshing resource list.
+ 
+ ```
  src/content/modules/   ← lessons (MDX + frontmatter). Add a file = add a lesson.
- src/pages/             ← roadmap (index), glossary, resources, go-physical, lesson route
+-src/pages/             ← roadmap (index), glossary, resources, go-physical, lesson route
++src/pages/             ← roadmap (index), progress, assessment, glossary, resources,
++                         go-physical, lesson route
  src/components/        ← RobotLab, Quiz, Term, ProgressTrace, ChatWidget
 -src/lib/               ← sim.js (robot), blocks.js (Blockly defs + generators), progress.js
 -functions/api/chat.js  ← Cloudflare Pages Function (AI tutor proxy)
 +src/lib/               ← sim.js (robot), blocks.js (Blockly defs + generators), progress.js,
 +                         interpreter.js (block-tree runner), tutor.js (chat transport),
-+                         share.js (program-in-a-URL encoding)
++                         share.js (program-in-a-URL encoding),
++                         assessment.js (procedural question generator)
 +functions/api/chat.js  ← AI tutor proxy (Pages Function; also imported by worker/index.js)
 +worker/index.js        ← entry for the `wrangler deploy` path; adds per-IP rate limiting
 +public/theme.js        ← render-blocking dark/light bootstrap (external on purpose — see CSP note)
@@ -271,7 +369,7 @@ index 2fe20ad..61c8aa3 100644
  .github/workflows/freshness.yml
  ```
  
-@@ -34,10 +48,27 @@ scripts/freshness.mjs  ← verify → discover → judge → validate pipeline
+@@ -34,12 +51,33 @@ scripts/freshness.mjs  ← verify → discover → judge → validate pipeline
  
  ```bash
  npm install
@@ -299,8 +397,14 @@ index 2fe20ad..61c8aa3 100644
 +
  ## Deploying (Cloudflare Pages)
  
++**First time?** `SETUP.md` is the click-by-click walkthrough (Cloudflare dashboard,
++bindings, secrets, verification checklist). This section is the short version for
++people who already know the platform.
++
  1. Push this repo to GitHub.
-@@ -49,6 +80,16 @@ npx wrangler pages dev dist   # after `npm run build`, to test the chat function
+ 2. Cloudflare dashboard → Workers & Pages → Create → Pages → connect the repo.
+    - Build command: `npm run build`  ·  Output directory: `dist`
+@@ -49,6 +87,16 @@ npx wrangler pages dev dist   # after `npm run build`, to test the chat function
  4. Recommended: add a rate-limiting rule on `/api/chat` (e.g. 10 req/min per IP)
     under Security → WAF → Rate limiting rules.
  
@@ -317,7 +421,7 @@ index 2fe20ad..61c8aa3 100644
  Every push to `main` redeploys. Every PR gets a preview URL automatically —
  which is how you review the monthly freshness PR.
  
-@@ -90,9 +131,18 @@ The roadmap, progress trace, and prev/next navigation pick it up automatically
+@@ -90,9 +138,65 @@ The roadmap, progress trace, and prev/next navigation pick it up automatically
  from the frontmatter. Add new terms to `public/glossary.json`; `<Term>` tooltips
  and the glossary page both read from it.
  
@@ -336,15 +440,62 @@ index 2fe20ad..61c8aa3 100644
 +Extra arena walls via the `walls` prop (JSON array of `{x,y,w,h}`). The `required`
 +prop (comma-separated block types) additionally demands the lesson's *concept* was
 +used, so a goal can't be brute-forced past the idea it exists to teach.
++
++## Progress tracking
++
++Two surfaces, one store (`src/lib/progress.js`, localStorage only, no accounts):
++
++- **Inline** — the PCB-trace bar on the roadmap and at the top of every lesson,
++  with the current lesson marked.
++- **`/progress`** — the dashboard: overall completion, active days, gate status,
++  per-module lesson state, checkpoint quiz scores, badges, assessment history,
++  and a **topic mastery** breakdown derived from assessment answers, sorted
++  weakest-first so it says what to revisit rather than just what you scored.
++
++Backup lives here too. localStorage is fragile; export before switching devices.
++
++## Assessment
++
++`/assessment` offers three levels, and generates a **fresh five-question paper on
++every attempt**:
++
++| Level | Tests | Example |
++|---|---|---|
++| Easy | recall | "Is a motor an input or an output?" |
++| Medium | apply one step | "12-tooth gear drives a 36-tooth gear — what's the ratio?" |
++| Hard | trace & debug | "Repeat 3×: [move 2, turn right]. Where does it finish?" |
++
++**The questions are procedurally generated, not AI-generated.** That is a
++deliberate choice, and the reasoning is worth keeping:
++
++1. **Correctness.** An assessment is the one place a hallucinated answer key does
++   real damage — it teaches the wrong thing with authority. Every template here
++   *computes* its answer; the trace questions literally run the same walk the
++   simulator does, checked against an independent implementation in
++   `scripts/test-assessment.mjs`.
++2. **Cost.** Workers AI's free allocation is shared with the tutor. A generated
++   paper per attempt would drain it; this costs nothing.
++3. **Offline.** The service worker keeps lessons working on a plane. Questions
++   generated in-browser keep working there too.
++
++Uniqueness comes from parameterisation: numbers, programs, option order, and
++template selection are all randomised, no template repeats within a paper, and
++the correct answer's position is uniformly distributed (tested — a learner who
++always picks B cannot beat chance).
++
++Answering feeds `topicStats`, which is what drives the mastery view on
++`/progress`. **Rule of thumb for contributors: if the assessment tests it, a
++lesson must teach it.** Adding the Ohm's law and gear-ratio questions is exactly
++what exposed those gaps in Module 4.
  
  ## The confidence gate
  
-@@ -111,11 +161,17 @@ localStorage; encourage an export before switching devices.
+@@ -111,11 +215,23 @@ localStorage; encourage an export before switching devices.
  
  ## Verification loop
  
 -`npm run verify` checks 60 acceptance conditions (curriculum coverage, every
-+`npm run verify` checks ~60 acceptance conditions (curriculum coverage, every
++`npm run verify` checks ~70 acceptance conditions (curriculum coverage, every
  lesson completable, gate integrity, anti-cheat goal rules, resource allowlist,
 -glossary completeness, no eval in client code). `npm test` runtime-tests the
 -block interpreter headlessly. Both run in CI on every push — the project is
@@ -355,13 +506,19 @@ index 2fe20ad..61c8aa3 100644
 +
 +`npm run verify` reads `dist/`, so **run `npm run build` first** (CI already does).
 +
-+`npm test` runtime-tests the block interpreter and the share-link/stream parsing
-+headlessly. All of it runs in CI on every push — the project is only "done" when
++`npm test` runtime-tests the block interpreter, the share-link/stream parsing, the
++assessment generator (answer keys, uniqueness, answer-position fairness), and a
++jsdom pass that loads the **built** pages with the **built** CSS and clicks through
++the chat panel, glossary filter, tooltips, assessment, and progress dashboard.
++
++> jsdom does **not** model the user-agent stylesheet origin, so it cannot see a
++> component rule out-ranking `[hidden]`. Condition `C-HIDDEN` is the detector for
++> that; the DOM tests cover event wiring. All of it runs in CI on every push — the project is only "done" when
 +all conditions pass, by construction.
  
  ## Security notes
  
-@@ -125,12 +181,43 @@ never by `eval`/`new Function` — so the CSP stays `script-src 'self'` with no
+@@ -125,12 +241,43 @@ never by `eval`/`new Function` — so the CSP stays `script-src 'self'` with no
  
  - The AI system prompt, model choice, token caps, and history limits live only
    in `functions/api/chat.js`. The browser sends the question, ≤6 history turns,
@@ -407,7 +564,7 @@ index 2fe20ad..61c8aa3 100644
  ## Deliberately deferred (see project doc)
  
  - Original explainer videos: recommended pipeline is Excalidraw + OBS (or
-@@ -138,3 +225,7 @@ never by `eval`/`new Function` — so the CSP stays `script-src 'self'` with no
+@@ -138,3 +285,7 @@ never by `eval`/`new Function` — so the CSP stays `script-src 'self'` with no
    — the CSP already allows that frame source.
  - Wokwi-embedded MicroPython lessons for module 3+ (CSP already allows it).
  - Pagefind search across lessons once content volume justifies it.
@@ -2132,7 +2289,7 @@ index c6b2a9c..1f003c1 100644
        "engines": {
          "node": ">=10.0.0"
 diff --git a/package.json b/package.json
-index b844cfb..9ba78b1 100644
+index b844cfb..95846d4 100644
 --- a/package.json
 +++ b/package.json
 @@ -9,7 +9,7 @@
@@ -2140,7 +2297,7 @@ index b844cfb..9ba78b1 100644
      "freshness": "node scripts/freshness.mjs",
      "verify": "node scripts/verify.mjs",
 -    "test": "node scripts/test-interpreter.mjs"
-+    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-dom.mjs"
++    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-assessment.mjs && node scripts/test-dom.mjs"
    },
    "dependencies": {
      "@astrojs/mdx": "^7.0.5",
@@ -2170,6 +2327,83 @@ index 829e737..752cb9c 100644
 +
 +/theme.js
 +  Cache-Control: no-cache
+diff --git a/public/glossary.json b/public/glossary.json
+index 942c828..9d36145 100644
+--- a/public/glossary.json
++++ b/public/glossary.json
+@@ -3,7 +3,7 @@
+     "def": "A machine that senses the world, decides something, and then moves or acts on its own."
+   },
+   "actuator": {
+-    "def": "Any part that makes a robot move or act \u2014 like a motor or a buzzer."
++    "def": "Any part that makes a robot move or act — like a motor or a buzzer."
+   },
+   "sensor": {
+     "def": "A part that lets the robot notice things, like distance, light, or touch."
+@@ -18,30 +18,54 @@
+     "def": "A named box in a program where you store a value to use later."
+   },
+   "led": {
+-    "def": "A tiny light (Light-Emitting Diode) \u2014 the 'hello world' of electronics."
++    "def": "A tiny light (Light-Emitting Diode) — the 'hello world' of electronics."
+   },
+   "circuit": {
+     "def": "A complete loop that electricity can flow around."
+   },
+   "motor": {
+-    "def": "An actuator that spins \u2014 robots use them to drive wheels."
++    "def": "An actuator that spins — robots use them to drive wheels."
+   },
+   "microcontroller": {
+-    "def": "A small, cheap computer chip that runs one program \u2014 the robot's brain."
++    "def": "A small, cheap computer chip that runs one program — the robot's brain."
+   },
+   "torque": {
+-    "def": "Twisting strength \u2014 how hard a motor can turn, not how fast."
++    "def": "Twisting strength — how hard a motor can turn, not how fast."
+   },
+   "gear": {
+     "def": "A toothed wheel that trades speed for strength (or the reverse) between motors and wheels."
+   },
+   "current": {
+-    "def": "How much electricity is flowing \u2014 like the amount of water moving through a hose."
++    "def": "How much electricity is flowing — like the amount of water moving through a hose."
+   },
+   "voltage": {
+-    "def": "The push behind electricity \u2014 like water pressure in a hose."
++    "def": "The push behind electricity — like water pressure in a hose."
+   },
+   "event": {
+-    "def": "Something that happens and starts code running \u2014 a button press, a timer, a sensor tripping."
++    "def": "Something that happens and starts code running — a button press, a timer, a sensor tripping."
++  },
++  "resistance": {
++    "def": "How much a material fights the flow of current, measured in ohms (Ω). More resistance, less current for the same push."
++  },
++  "ohms-law": {
++    "def": "The rule linking the three: current = voltage ÷ resistance (I = V ÷ R). Know two, you can always work out the third."
++  },
++  "gear-ratio": {
++    "def": "How many turns of the driving gear it takes to turn the driven gear once. A 3:1 ratio means three times slower and roughly three times more torque."
++  },
++  "power": {
++    "def": "How fast energy is delivered. For a spinning motor it is roughly torque × speed — which is why gears can trade one for the other but never create more of both."
++  },
++  "polling": {
++    "def": "Checking a sensor over and over inside a loop to see if anything changed. Simple, but the robot is blind between checks."
++  },
++  "interrupt": {
++    "def": "A signal that makes the microcontroller drop what it is doing and handle something immediately. This is what an event block becomes on real hardware."
++  },
++  "threshold": {
++    "def": "The value a sensor reading is compared against to make a decision — the 'stop if closer than this' number."
++  },
++  "pwm": {
++    "def": "Pulse-width modulation: switching power on and off very fast so a motor or LED behaves as if it were getting a fraction of full power. This is how 'set speed to 2' works on a real robot."
+   }
+-}
+\ No newline at end of file
++}
 diff --git a/public/manifest.webmanifest b/public/manifest.webmanifest
 new file mode 100644
 index 0000000..378926f
@@ -2266,12 +2500,163 @@ index 0000000..e7f0a17
 +    document.documentElement.setAttribute('data-theme', 'light');
 +  }
 +})();
+diff --git a/scripts/test-assessment.mjs b/scripts/test-assessment.mjs
+new file mode 100644
+index 0000000..6725c91
+--- /dev/null
++++ b/scripts/test-assessment.mjs
+@@ -0,0 +1,145 @@
++// The assessment generator makes two strong promises — every answer key is
++// correct, and questions don't repeat. Both are testable, so they're tested.
++import { pickQuestions, traceProgram, makeRng, DIFFICULTIES, templateCount, TOPICS } from '../src/lib/assessment.js';
++
++const pass = [], fail = [];
++const t = (n, c, extra = '') => (c ? pass : fail).push(`  ${c ? 'PASS' : 'FAIL'} ${n}${c || !extra ? '' : ` — ${extra}`}`);
++
++// --- structural integrity, across a lot of generated questions -------------
++{
++  let bad = [];
++  for (const d of DIFFICULTIES) {
++    for (let i = 0; i < 400; i++) {
++      for (const q of pickQuestions(d, 5)) {
++        if (typeof q.q !== 'string' || !q.q.trim()) bad.push(`${q.templateId}: empty prompt`);
++        if (!Array.isArray(q.options) || q.options.length < 3) bad.push(`${q.templateId}: <3 options`);
++        if (new Set(q.options).size !== q.options.length) bad.push(`${q.templateId}: duplicate options (${q.options.join(' | ')})`);
++        if (!(q.answer >= 0 && q.answer < q.options.length)) bad.push(`${q.templateId}: answer index out of range`);
++        if (!q.why || !q.why.trim()) bad.push(`${q.templateId}: no explanation`);
++        if (q.difficulty !== d) bad.push(`${q.templateId}: difficulty mismatch`);
++        if (!TOPICS.includes(q.topic)) bad.push(`${q.templateId}: unknown topic`);
++        if (q.options.some((o) => o == null || String(o).includes('undefined') || String(o).includes('NaN')))
++          bad.push(`${q.templateId}: bad option text (${q.options.join(' | ')})`);
++      }
++    }
++  }
++  t('A1 6000 generated questions are all well-formed', bad.length === 0, [...new Set(bad)].slice(0, 3).join(' ; '));
++}
++
++// --- the answer key must be computed, not asserted -------------------------
++{
++  // independent re-implementation of the walk, to catch a generator that
++  // agrees with itself but not with reality
++  const step = { north: [0, 1], east: [1, 0], south: [0, -1], west: [-1, 0] };
++  const dirs = ['north', 'east', 'south', 'west'];
++  function walk(prog) {
++    let x = 0, y = 0, d = 'north';
++    for (const s of prog) {
++      if (s.op === 'move') { x += step[d][0] * s.n; y += step[d][1] * s.n; }
++      else d = s.dir === 'right' ? dirs[(dirs.indexOf(d) + 1) % 4] : dirs[(dirs.indexOf(d) + 3) % 4];
++    }
++    return `(${x}, ${y}) facing ${d}`;
++  }
++  const cases = [
++    [[{ op: 'move', n: 3 }], '(0, 3) facing north'],
++    [[{ op: 'turn', dir: 'right' }, { op: 'move', n: 2 }], '(2, 0) facing east'],
++    [[{ op: 'turn', dir: 'left' }, { op: 'move', n: 2 }], '(-2, 0) facing west'],
++    [[{ op: 'move', n: 1 }, { op: 'turn', dir: 'right' }, { op: 'move', n: 1 }], '(1, 1) facing east'],
++    [[{ op: 'turn', dir: 'right' }, { op: 'turn', dir: 'right' }, { op: 'move', n: 4 }], '(0, -4) facing south'],
++  ];
++  let ok = true;
++  for (const [prog, expected] of cases) {
++    const got = traceProgram({ x: 0, y: 0, dir: 'north' }, prog);
++    const s = `(${got.x}, ${got.y}) facing ${got.dir}`;
++    if (s !== expected || walk(prog) !== expected) ok = false;
++  }
++  t('A2 the robot trace matches an independent implementation', ok);
++
++  // and the trace questions' stated answer must equal the traced result
++  let mismatches = 0;
++  for (let i = 0; i < 500; i++) {
++    for (const q of pickQuestions('medium', 5).concat(pickQuestions('hard', 5))) {
++      if (q.templateId !== 'trace-2' && q.templateId !== 'trace-loop') continue;
++      const m = q.q.match(/move (\d+), turn (right|left), move (\d+)/);
++      if (m) {
++        const expect = walk([{ op: 'move', n: +m[1] }, { op: 'turn', dir: m[2] }, { op: 'move', n: +m[3] }]);
++        if (q.options[q.answer] !== expect) mismatches++;
++      }
++      const l = q.q.match(/Repeat (\d+) times: \[ move (\d+), turn (right|left) \]/);
++      if (l) {
++        const body = [{ op: 'move', n: +l[2] }, { op: 'turn', dir: l[3] }];
++        const expect = walk(Array.from({ length: +l[1] }, () => body).flat());
++        if (q.options[q.answer] !== expect) mismatches++;
++      }
++    }
++  }
++  t('A3 every trace question\'s key equals the simulated outcome', mismatches === 0, `${mismatches} mismatched`);
++}
++
++// --- arithmetic templates: check the maths, don't trust it -----------------
++{
++  let wrong = 0, checked = 0;
++  for (let i = 0; i < 800; i++) {
++    for (const q of pickQuestions('medium', 5)) {
++      if (q.templateId === 'loop-count') {
++        const m = q.q.match(/runs (\d+) times.*?are (\d+) "move/);
++        checked++;
++        if (q.options[q.answer] !== String(+m[1] * +m[2])) wrong++;
++      }
++      if (q.templateId === 'gear-ratio') {
++        const m = q.q.match(/A (\d+)-tooth gear drives a (\d+)-tooth/);
++        checked++;
++        const r = +m[2] / +m[1];
++        if (!q.options[q.answer].startsWith(`${r.toFixed(r % 1 ? 1 : 0)}× slower`)) wrong++;
++      }
++      if (q.templateId === 'ohm-intuition') {
++        const m = q.q.match(/(\d+)V supply and a (\d+)Ω/);
++        checked++;
++        if (q.options[q.answer] !== `about ${Math.round((+m[1] / +m[2]) * 1000)} mA`) wrong++;
++      }
++    }
++  }
++  t('A4 arithmetic answer keys are correct', wrong === 0 && checked > 100, `${wrong}/${checked} wrong`);
++}
++
++// --- uniqueness -------------------------------------------------------------
++{
++  const seen = new Set();
++  for (let i = 0; i < 300; i++) for (const q of pickQuestions('medium', 5)) seen.add(q.q);
++  t('A5 medium questions vary a lot across attempts', seen.size > 40, `only ${seen.size} distinct prompts`);
++
++  // no template repeated inside a single attempt (while templates allow it)
++  let repeats = 0;
++  for (let i = 0; i < 300; i++) {
++    const ids = pickQuestions('hard', 5).map((q) => q.templateId);
++    if (new Set(ids).size !== ids.length && templateCount('hard') >= 5) repeats++;
++  }
++  t('A6 no template repeats within one attempt', repeats === 0, `${repeats} attempts had repeats`);
++
++  // answer position must not be predictable — a learner who always picks B
++  // should not beat chance
++  const counts = [0, 0, 0, 0];
++  let total = 0;
++  for (let i = 0; i < 1200; i++)
++    for (const q of pickQuestions('easy', 5)) { counts[q.answer]++; total++; }
++  const maxShare = Math.max(...counts.filter((_, i) => i < 4)) / total;
++  t('A7 correct answer position is not predictable', maxShare < 0.45, `most common slot holds ${(maxShare * 100).toFixed(1)}%`);
++}
++
++// --- determinism when seeded (so an attempt could be replayed) --------------
++{
++  const a = pickQuestions('hard', 5, 12345).map((q) => q.q + q.answer).join('|');
++  const b = pickQuestions('hard', 5, 12345).map((q) => q.q + q.answer).join('|');
++  const c = pickQuestions('hard', 5, 999).map((q) => q.q + q.answer).join('|');
++  t('A8 same seed reproduces the same paper', a === b);
++  t('A9 different seed gives a different paper', a !== c);
++  t('A10 rng is a real generator, not a constant', new Set(Array.from({ length: 20 }, makeRng(7))).size > 1);
++}
++
++// --- every difficulty is actually populated --------------------------------
++for (const d of DIFFICULTIES)
++  t(`A11 "${d}" has enough templates for a 5-question paper`, templateCount(d) >= 5, `only ${templateCount(d)}`);
++
++console.log(pass.join('\n'));
++if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} assessment test(s) failing.`); process.exit(1); }
++console.log(`\n✓ ${pass.length} assessment generator tests pass`);
 diff --git a/scripts/test-dom.mjs b/scripts/test-dom.mjs
 new file mode 100644
-index 0000000..2370971
+index 0000000..4adc317
 --- /dev/null
 +++ b/scripts/test-dom.mjs
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,200 @@
 +// Real-DOM integration tests. Loads the BUILT pages into jsdom, applies the
 +// BUILT stylesheets, runs the BUILT component bundles, and drives them the way
 +// a person would (click, type, Escape). This is the layer that catches bugs
@@ -2418,6 +2803,57 @@ index 0000000..2370971
 +  }
 +}
 +
++// ----------------------------------------------------------- assessment
++{
++  const win = await loadPage('assessment/index.html', [bundle('assessment')]);
++  const doc = win.document;
++  const exam = doc.getElementById('exam');
++  const click = (el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
++
++  t('D19 exam starts hidden', !shown(win, exam));
++
++  const hard = doc.querySelector('.level[data-difficulty="hard"]');
++  click(hard);
++  t('D20 choosing a level reveals the exam', shown(win, exam));
++
++  const qs = [...doc.querySelectorAll('#questions fieldset')];
++  t('D21 five questions are rendered', qs.length === 5, `got ${qs.length}`);
++  t('D22 every question offers options', qs.every((f) => f.querySelectorAll('input[type=radio]').length >= 3));
++
++  // submitting with blanks must warn, not score
++  click(doc.getElementById('submit'));
++  t('D23 blank answers are refused, not graded',
++    /unanswered/i.test(doc.getElementById('result').textContent));
++
++  // answer everything correctly is impossible to know from the DOM, so just
++  // answer the first option of each and confirm it grades and explains
++  for (const f of qs) f.querySelector('input[type=radio]').checked = true;
++  click(doc.getElementById('submit'));
++  t('D24 a completed paper is graded', /\d\/5/.test(doc.getElementById('result').textContent));
++  t('D25 explanations are shown for every question',
++    doc.querySelectorAll('#review .explain').length === 5);
++  t('D26 a retry option appears', shown(win, doc.getElementById('again-row')));
++
++  // a fresh paper must not be the identical paper
++  const before = qs.map((f) => f.querySelector('legend').textContent).join('|');
++  click(doc.getElementById('again'));
++  const after = [...doc.querySelectorAll('#questions fieldset legend')].map((l) => l.textContent).join('|');
++  t('D27 "new questions" actually produces a different paper', before !== after);
++  t('D28 the score line resets on a new paper', doc.getElementById('result').textContent === '');
++}
++
++// ------------------------------------------------------------- progress
++{
++  const win = await loadPage('progress/index.html', [bundle('progress')]);
++  const doc = win.document;
++  t('D29 progress page reports a percentage', /%$/.test(doc.getElementById('pct').textContent));
++  t('D30 every lesson is listed with a state marker',
++    doc.querySelectorAll('.lesson-list li .tick').length >= 12);
++  t('D31 gate status is reported', /Locked|Open/.test(doc.getElementById('stat-gate').textContent));
++  t('D32 empty states are friendly, not blank',
++    doc.querySelectorAll('.muted').length >= 3);
++}
++
 +console.log(pass.join('\n'));
 +if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} DOM test(s) failing.`); process.exit(1); }
 +console.log(`\n✓ ${pass.length} DOM integration tests pass`);
@@ -2473,10 +2909,10 @@ index 0000000..d2e18c1
 +if (fail.length) { console.log('\n' + fail.join('\n')); process.exit(1); }
 +console.log(`\n✓ ${pass.length} share/stream tests pass`);
 diff --git a/scripts/verify.mjs b/scripts/verify.mjs
-index 26006ef..649830b 100644
+index 26006ef..8af705d 100644
 --- a/scripts/verify.mjs
 +++ b/scripts/verify.mjs
-@@ -197,6 +197,149 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
+@@ -197,6 +197,177 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
      : ok('C8', `${used.size} glossary terms all defined`);
  }
  
@@ -2621,6 +3057,34 @@ index 26006ef..649830b 100644
 +  dangling.length
 +    ? bad('C-LABELS', `lesson text points at UI labels that no component renders: ${dangling.map((d) => `"${d}"`).join(', ')}`)
 +    : ok('C-LABELS', `${referenced.size} UI label(s) referenced in lessons all exist in components`);
++}
++
++// ---------- C-LABIDS: lab ids must be unique and checkpoints self-marking --
++// Two RobotLabs sharing a lessonId share a localStorage workspace key, so they
++// silently overwrite each other's saved blocks. And a checkpoint whose
++// verified lab uses some OTHER id completes a lesson that doesn't exist —
++// the gate then waits forever on a lesson the learner has actually finished.
++{
++  const ids = [];
++  for (const l of lessons)
++    for (const m of l.raw.matchAll(/<RobotLab[\s\S]*?lessonId=["']([^"']+)["']/g))
++      ids.push({ slug: l.slug, id: m[1], checkpoint: l.checkpoint, raw: l.raw });
++
++  const dupes = ids.map((i) => i.id).filter((id, i, a) => a.indexOf(id) !== i);
++  dupes.length
++    ? bad('C-LABIDS', `duplicate RobotLab lessonId (shared workspace storage): ${[...new Set(dupes)].join(', ')}`)
++    : ok('C-LABIDS', `${ids.length} RobotLab ids are unique`);
++
++  for (const l of lessons) {
++    if (!l.checkpoint) continue;
++    const labIds = [...l.raw.matchAll(/<RobotLab[\s\S]*?lessonId=["']([^"']+)["']/g)].map((m) => m[1]);
++    const quizIds = [...l.raw.matchAll(/quizId=["']([^"']+)["']/g)].map((m) => m[1]);
++    // Something in the lesson must be able to complete the lesson's own slug.
++    const nonFreeLab = labIds.includes(l.slug) && !new RegExp(`lessonId=["']${l.slug}["'][\\s\\S]{0,300}?goal=["']free["']`).test(l.raw);
++    nonFreeLab || quizIds.includes(l.slug)
++      ? ok('C-LABIDS', `${l.slug} has a completion path bound to its own slug`)
++      : bad('C-LABIDS', `${l.slug} is a checkpoint but nothing completes the slug "${l.slug}" (lab ids: ${labIds.join(', ') || 'none'})`);
++  }
 +}
 +
  // ---------- report ----------------------------------------------------------
@@ -3550,11 +4014,179 @@ index 8a19f6b..59e458b 100644
 +    if (!e.target.closest('.term')) closeAll(null);
 +  });
 +</script>
+diff --git a/src/content/modules/m3-wall-stop.mdx b/src/content/modules/m3-wall-stop.mdx
+index cb405d4..60b081c 100644
+--- a/src/content/modules/m3-wall-stop.mdx
++++ b/src/content/modules/m3-wall-stop.mdx
+@@ -7,6 +7,7 @@ duration: 20
+ checkpoint: true
+ summary: "The robot must stop itself near the wall — sensor-decided, not step-counted."
+ ---
++import Term from '../../components/Term.astro';
+ import RobotLab from '../../components/RobotLab.astro';
+ 
+ Here's the mission every robot vacuum, drone, and self-driving car starts with: **approach the wall, stop before touching it.**
+@@ -28,3 +29,15 @@ The cleanest tool is the **repeat until** block: *repeat until distance ≤ 1 
+ />
+ 
+ When it works, move an imaginary wall in your head: would your program still work if the wall were closer? Farther? *Yes* — because the robot is sensing, not memorizing. That's the difference between a program and a wind-up toy.
++
++## Under the hood: what the sensor can't see
++
++Your program compares a reading against a number — that number is the <Term id="threshold">threshold</Term>. Choosing it well is most of the skill, and it depends on things the sensor never tells you:
++
++- **Stopping distance.** The robot keeps moving after you decide to stop. Faster robot, bigger threshold.
++- **Check rate.** Between two checks the robot is blind. This loop is <Term id="polling">polling</Term>: read, decide, move, repeat. Move too far per pass and you can sail straight past your own threshold.
++- **Angle.** A distance sensor measures along one narrow line. A wall approached at a sharp angle reflects the signal *away* instead of back, so the reading stays large right up until the crash.
++
++That last one is why real robots carry several sensors pointing different ways. A single sensor doesn't give you "the distance to the wall" — it gives you "the distance along this one line, if something reflects".
++
++**The habit worth forming:** whenever a sensor-driven robot misbehaves, ask the three questions in order — *was it checked often enough, was the threshold big enough, and could the sensor actually see the thing?*
+diff --git a/src/content/modules/m4-circuits.mdx b/src/content/modules/m4-circuits.mdx
+index 272f7e7..12a6ac1 100644
+--- a/src/content/modules/m4-circuits.mdx
++++ b/src/content/modules/m4-circuits.mdx
+@@ -22,6 +22,27 @@ So an <Term id="led">LED</Term> lighting up means: a battery pushes (voltage) a
+ 
+ One more part hiding in your robot: the <Term id="microcontroller">microcontroller</Term> — a tiny cheap computer whose job is to open and close many little circuits very fast. When your program says *turn LED on*, the microcontroller closes the LED's loop. Your blocks have been operating switches all along.
+ 
++## Under the hood: the one equation
++
++You now know voltage pushes and current flows. The third piece is <Term id="resistance">resistance</Term> — how hard the path fights back, measured in ohms (Ω). All three lock together in <Term id="ohms-law">Ohm's law</Term>:
++
++```
++current = voltage ÷ resistance        I = V ÷ R
++```
++
++That is the whole thing. Try it: a 9V battery through a 470Ω resistor gives 9 ÷ 470 = 0.019 A, or about **19 mA**. Push harder (more volts) and more flows. Fight harder (more ohms) and less flows.
++
++**Why you should care right now:** an LED will happily draw far more current than it can survive and burn itself out in about a second. So you put a resistor in series to hold the current down — that is what the little resistor next to every LED in every kit is doing. It is not decoration; it is Ohm's law keeping your LED alive.
++
++A quick way to sanity-check any circuit you build later:
++
++| If you… | Then current… | Because |
++|---|---|---|
++| swap 9V for 3V | drops to a third | less push, same fight |
++| swap 470Ω for 220Ω | roughly doubles | less fight, same push |
++| forget the resistor | shoots up | almost nothing fighting it — 💥 |
++
++
+ **Want to see it for real?** The resources page links SparkFun's "What is a Circuit?" — the classic illustrated walk-through, with a simulation of current flowing.
+ 
+ <Quiz
+@@ -30,6 +51,9 @@ One more part hiding in your robot: the <Term id="microcontroller">microcontroll
+     { "q": "A circuit is…", "options": ["any wire", "a complete loop electricity can flow around", "a type of battery"], "answer": 1, "why": "No complete loop, no flow. That's why a cut wire kills everything." },
+     { "q": "Voltage is like…", "options": ["water pressure — the push", "the hose itself", "the color of the water"], "answer": 0, "why": "Voltage pushes; current is what gets pushed." },
+     { "q": "What does a switch really do?", "options": ["adds more current", "opens or closes the loop", "stores electricity"], "answer": 1, "why": "Open loop = off. Closed loop = on. Everything else is decoration." },
+-    { "q": "When your block program turns the LED on, the microcontroller…", "options": ["paints the LED", "closes that LED's circuit", "makes new electricity"], "answer": 1, "why": "Code controls switches; switches control circuits; circuits control parts." }
++    { "q": "When your block program turns the LED on, the microcontroller…", "options": ["paints the LED", "closes that LED's circuit", "makes new electricity"], "answer": 1, "why": "Code controls switches; switches control circuits; circuits control parts." },
++    { "q": "Ohm's law says current equals…", "options": ["voltage × resistance", "voltage ÷ resistance", "resistance ÷ voltage"], "answer": 1, "why": "I = V ÷ R. More push means more flow; more resistance means less." },
++    { "q": "A 6V supply through a 200Ω resistor gives roughly…", "options": ["30 mA", "1200 mA", "3 mA"], "answer": 0, "why": "6 ÷ 200 = 0.03 A = 30 mA." },
++    { "q": "Why does an LED need a resistor in series with it?", "options": ["to make it brighter", "to limit the current so it doesn't burn out", "to store charge for later"], "answer": 1, "why": "Without something to fight the flow, the current runs away and the LED dies almost instantly." }
+   ]}
+ />
+diff --git a/src/content/modules/m4-motors-gears.mdx b/src/content/modules/m4-motors-gears.mdx
+index 3013706..eb152ba 100644
+--- a/src/content/modules/m4-motors-gears.mdx
++++ b/src/content/modules/m4-motors-gears.mdx
+@@ -4,7 +4,7 @@ module: 4
+ moduleTitle: "Electricity & Muscle"
+ order: 2
+ duration: 15
+-checkpoint: false
++checkpoint: true
+ summary: "Why robots trade speed for strength — and your first variable."
+ ---
+ import Term from '../../components/Term.astro';
+@@ -18,18 +18,59 @@ Mesh a small gear into a big one and you *trade*: the big gear turns slower but
+ Your simulator has that slider too. The **set speed** block uses a <Term id="variable">variable</Term> — a named box holding a number the program can read and change.
+ 
+ <RobotLab
+-  lessonId="m4-motors-gears"
++  lessonId="m4-motors-sandbox"
+   goal="free"
+   blocks="variables"
+   goalText="Sandbox: set speed to 3 and drive — zoomy but harder to park precisely. Set it to 1 and feel the control come back. That's the gear trade-off in your hands."
+   target='{"x":300,"y":60,"r":24}'
+ />
+ 
++## Under the hood: gear ratios are just division
++
++"Slower but stronger" is the feel. The number behind it is the <Term id="gear-ratio">gear ratio</Term>, and you get it by dividing teeth:
++
++```
++ratio = teeth on driven gear ÷ teeth on driving gear
++```
++
++A 10-tooth motor gear turning a 40-tooth wheel gear is 40 ÷ 10 = **4:1**. The wheel turns **4× slower** and with roughly **4× more torque**. Reverse them and you get 1:4 — four times faster, a quarter the strength.
++
++There is no free lunch here, and the reason is <Term id="power">power</Term>:
++
++```
++power ≈ torque × speed
++```
++
++Gears slide the balance between torque and speed. They never increase the product. If a robot can't climb a ramp, gearing down 4:1 will get it up — and it will also crawl on the flat afterwards. That trade is the entire job of a drivetrain designer.
++
++**Working it out for a real robot:** say your motor spins 200 rpm and you want the wheel at 50 rpm. You need 200 ÷ 50 = 4:1, so pair a 10-tooth with a 40-tooth. You've just done drivetrain design.
++
++## Under the hood: how "set speed" actually works
++
++A motor has no volume knob. It is on or off. So how does *set speed to 2* mean anything?
++
++The microcontroller switches the motor on and off **very fast** — thousands of times a second — and varies how much of each cycle is "on". That fraction is called the duty cycle, and the technique is <Term id="pwm">PWM</Term>. 50% on means roughly half power; the motor's own inertia smooths the pulsing into steady spinning.
++
++So the `speed` <Term id="variable">variable</Term> in your program becomes a duty-cycle percentage on real hardware. The block you've been dragging maps to a real, specific electrical behaviour.
++
++<RobotLab
++  lessonId="m4-motors-gears"
++  goal="reach-target"
++  blocks="variables"
++  required="robot_set_speed"
++  goalText="Checkpoint: reach the target pad, and do it using the set speed block. Fast is easy to start and hard to stop — find a speed you can actually steer."
++  walls='[{"x":110,"y":150,"w":170,"h":16}]'
++  target='{"x":300,"y":60,"r":26}'
++/>
++
+ <Quiz
+   quizId="m4-motors-gears"
+   questions={[
+     { "q": "Torque is…", "options": ["how fast something spins", "twisting strength", "a type of gear"], "answer": 1, "why": "Fast ≠ strong. Torque is the strength half." },
+     { "q": "Small gear drives a big gear. The big gear turns…", "options": ["faster, weaker", "slower, stronger", "exactly the same"], "answer": 1, "why": "The trade: lose speed, gain torque. Bikes, cars, and robot wheels all use it." },
+-    { "q": "A variable is…", "options": ["a named box holding a value", "a kind of loop", "a wire"], "answer": 0, "why": "Name it, store a value, use it anywhere — like `speed`." }
++    { "q": "A variable is…", "options": ["a named box holding a value", "a kind of loop", "a wire"], "answer": 0, "why": "Name it, store a value, use it anywhere — like `speed`." },
++    { "q": "A 12-tooth gear drives a 36-tooth gear. The ratio is…", "options": ["3:1 — three times slower, more torque", "1:3 — three times faster, less torque", "36:12 — no change in speed"], "answer": 0, "why": "36 ÷ 12 = 3. Driven divided by driving." },
++    { "q": "You gear a robot down 4:1 to climb a ramp. On flat ground it will…", "options": ["go four times faster", "go about four times slower", "go the same speed"], "answer": 1, "why": "Power ≈ torque × speed. Gears move the balance; they don't add power." },
++    { "q": "On real hardware, 'set speed to 2' works by…", "options": ["sending less voltage continuously", "switching the motor on and off very fast (PWM)", "using a smaller motor"], "answer": 1, "why": "Duty cycle. On/off thousands of times a second, and inertia smooths it out." }
+   ]}
+ />
+diff --git a/src/content/modules/m5-events.mdx b/src/content/modules/m5-events.mdx
+index f888766..c9e61c1 100644
+--- a/src/content/modules/m5-events.mdx
++++ b/src/content/modules/m5-events.mdx
+@@ -24,3 +24,17 @@ You've been using one all along without seeing it: every program so far ran *whe
+ />
+ 
+ On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.
++
++## Under the hood: events vs. asking repeatedly
++
++In the last module you wrote a loop that checks a sensor over and over. That's <Term id="polling">polling</Term>, and it has a cost: the robot can only notice things as often as the loop comes round, and one slow step delays *everything*.
++
++Real microcontrollers offer the alternative: an <Term id="interrupt">interrupt</Term>. The hardware watches a pin itself, and the moment it changes, the processor drops what it's doing, runs a short handler, and returns to where it was. Your "when ▶ Run is pressed" block is the friendly face of exactly this.
++
++| | Polling | Interrupt / event |
++|---|---|---|
++| Notices a change | next time the loop comes round | almost immediately |
++| Costs | CPU time spent asking | nothing until it fires |
++| Best for | values that drift slowly (distance, temperature) | sudden things (bump switch, button, timer) |
++
++**The design rule:** poll for things that change smoothly, use events for things that *happen*. A bump sensor read by polling will miss a fast knock; a temperature read by interrupt would fire constantly for no reason.
 diff --git a/src/layouts/Base.astro b/src/layouts/Base.astro
-index c2ceb80..d73f9c1 100644
+index c2ceb80..f5edffb 100644
 --- a/src/layouts/Base.astro
 +++ b/src/layouts/Base.astro
-@@ -15,9 +15,14 @@ const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
+@@ -15,54 +15,119 @@ const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
      <meta charset="utf-8" />
      <meta name="viewport" content="width=device-width, initial-scale=1" />
      <meta name="description" content="Learn robotics from zero — blocks first, simulator first, real robot later." />
@@ -3569,7 +4201,11 @@ index c2ceb80..d73f9c1 100644
      <header class="site-head">
        <nav class="wrap nav">
          <a class="logo" href="/">⚙ Learn<span>Robotics</span></a>
-@@ -27,42 +32,100 @@ const { title = 'Learn Robotics', lessonId = '' } = Astro.props;
+         <div class="links">
+           <a href="/">Roadmap</a>
++          <a href="/progress/">Progress</a>
++          <a href="/assessment/">Assessment</a>
+           <a href="/glossary/">Glossary</a>
            <a href="/resources/">Resources</a>
            <a href="/go-physical/">Go physical</a>
          </div>
@@ -3702,6 +4338,502 @@ index c2ceb80..d73f9c1 100644
 -  .links a { font-size: 0.95rem; text-decoration: none; }
 -  .links a:hover { text-decoration: underline; }
 -</style>
+diff --git a/src/lib/assessment.js b/src/lib/assessment.js
+new file mode 100644
+index 0000000..52f6018
+--- /dev/null
++++ b/src/lib/assessment.js
+@@ -0,0 +1,388 @@
++// Assessment question generator.
++//
++// WHY PROCEDURAL AND NOT AI-GENERATED
++// The obvious way to get "a unique question every time" is to ask the LLM.
++// We deliberately don't, for three reasons:
++//   1. Correctness. An assessment that grades you is the one place a
++//      hallucinated answer key does real damage — it would teach the wrong
++//      thing with authority. Here the generator COMPUTES the answer, so the
++//      key is right by construction.
++//   2. Cost. Workers AI has a 10,000 Neuron/day free allocation shared with
++//      the tutor. A 10-question quiz per attempt would eat it fast.
++//   3. Offline. The service worker makes lessons work on a plane; questions
++//      generated in-browser keep working there too.
++//
++// Uniqueness comes from parameterisation instead: each template draws random
++// numbers, names, and orderings, and several templates SIMULATE the robot to
++// derive both the answer and the distractors. The practical question space is
++// in the tens of thousands, and `pickQuestions` additionally avoids repeating
++// a template within an attempt.
++//
++// Difficulty ladder (deliberate, not decoration):
++//   easy   — recall: does the learner know what a term means?
++//   medium — apply: given a rule, predict one step.
++//   hard   — trace/debug: run several steps in your head, or find the fault.
++
++// ---------------------------------------------------------------- utilities
++export function makeRng(seed) {
++  // mulberry32 — small, fast, and seedable so an attempt is reproducible
++  let a = seed >>> 0;
++  return function rng() {
++    a |= 0;
++    a = (a + 0x6d2b79f5) | 0;
++    let t = Math.imul(a ^ (a >>> 15), 1 | a);
++    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++}
++
++const int = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
++const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
++
++function shuffle(rng, arr) {
++  const a = arr.slice();
++  for (let i = a.length - 1; i > 0; i--) {
++    const j = Math.floor(rng() * (i + 1));
++    [a[i], a[j]] = [a[j], a[i]];
++  }
++  return a;
++}
++
++/** Build a question with the correct option shuffled into place. */
++function mc({ q, correct, wrong, why, topic, difficulty, rng }) {
++  const options = shuffle(rng, [correct, ...wrong]);
++  return { q, options, answer: options.indexOf(correct), why, topic, difficulty };
++}
++
++// Distinct distractors: drops duplicates and anything equal to the answer.
++function distinct(correct, candidates, n) {
++  const out = [];
++  for (const c of candidates) {
++    if (c === correct || out.includes(c)) continue;
++    out.push(c);
++    if (out.length === n) break;
++  }
++  return out;
++}
++
++// ------------------------------------------------------- robot mini-simulator
++// Mirrors src/lib/sim.js semantics at grid resolution: heading in 90° steps,
++// "move N" advances N cells, turns rotate in place. Used to derive answers for
++// the trace questions so they cannot disagree with the real simulator.
++const DIRS = ['north', 'east', 'south', 'west'];
++const STEP = { north: [0, 1], east: [1, 0], south: [0, -1], west: [-1, 0] };
++
++export function traceProgram(start, program) {
++  let { x, y, dir } = start;
++  for (const step of program) {
++    if (step.op === 'move') {
++      const [dx, dy] = STEP[dir];
++      x += dx * step.n;
++      y += dy * step.n;
++    } else if (step.op === 'turn') {
++      const i = DIRS.indexOf(dir);
++      dir = step.dir === 'right' ? DIRS[(i + 1) % 4] : DIRS[(i + 3) % 4];
++    }
++  }
++  return { x, y, dir };
++}
++
++const fmt = (p) => `(${p.x}, ${p.y}) facing ${p.dir}`;
++
++// ------------------------------------------------------------------ templates
++// Each returns a question object. `id` lets pickQuestions avoid repeats.
++
++const TEMPLATES = [
++  // ---------------------------------------------------------------- EASY
++  {
++    id: 'def-loop', topic: 'loops', difficulty: 'easy',
++    make: (rng) => mc({
++      rng, topic: 'loops', difficulty: 'easy',
++      q: 'What is a loop for?',
++      correct: 'Repeating the same steps without dragging them out again and again',
++      wrong: ['Making the robot move faster', 'Storing a number for later', 'Stopping the program'],
++      why: 'A loop says "do this pattern N times" — one block instead of eight.',
++    }),
++  },
++  {
++    id: 'def-sensor', topic: 'sensing', difficulty: 'easy',
++    make: (rng) => mc({
++      rng, topic: 'sensing', difficulty: 'easy',
++      q: 'A sensor lets a robot…',
++      correct: 'measure something about the world, like distance to a wall',
++      wrong: ['move its wheels', 'store a program', 'increase its battery voltage'],
++      why: 'Sensors are input; actuators (motors, LEDs) are output.',
++    }),
++  },
++  {
++    id: 'def-actuator', topic: 'actuators', difficulty: 'easy',
++    make: (rng) => {
++      const thing = pick(rng, [
++        { name: 'a motor', kind: 'actuator' },
++        { name: 'an LED', kind: 'actuator' },
++        { name: 'a distance sensor', kind: 'sensor' },
++      ]);
++      return mc({
++        rng, topic: 'actuators', difficulty: 'easy',
++        q: `Is ${thing.name} an input or an output?`,
++        correct: thing.kind === 'sensor' ? 'Input — it measures the world' : 'Output — it changes the world',
++        wrong: thing.kind === 'sensor'
++          ? ['Output — it changes the world', 'Neither — it only stores data']
++          : ['Input — it measures the world', 'Neither — it only stores data'],
++        why: 'Sensors measure (in). Actuators act (out). Everything a robot does is one or the other.',
++      });
++    },
++  },
++  {
++    id: 'def-voltage', topic: 'electricity', difficulty: 'easy',
++    make: (rng) => mc({
++      rng, topic: 'electricity', difficulty: 'easy',
++      q: 'In the water analogy, voltage is…',
++      correct: 'the push (pressure) behind the flow',
++      wrong: ['the amount of water flowing', 'the width of the hose', 'the temperature of the water'],
++      why: 'Voltage pushes; current is what gets pushed.',
++    }),
++  },
++  {
++    id: 'def-circuit', topic: 'electricity', difficulty: 'easy',
++    make: (rng) => mc({
++      rng, topic: 'electricity', difficulty: 'easy',
++      q: 'What happens if you break a circuit anywhere?',
++      correct: 'Everything on that loop stops',
++      wrong: ['Only the part after the break stops', 'The current doubles', 'Nothing — electricity finds a way'],
++      why: 'No complete loop, no flow. That is exactly what a switch does on purpose.',
++    }),
++  },
++  {
++    id: 'def-event', topic: 'events', difficulty: 'easy',
++    make: (rng) => mc({
++      rng, topic: 'events', difficulty: 'easy',
++      q: 'An event block ("when ▶ Run is pressed") means the code below it…',
++      correct: 'waits until that thing happens, then runs',
++      wrong: ['runs immediately when the page loads', 'runs once per second forever', 'never runs unless you copy it'],
++      why: 'Events are how real robots start: a button, a timer, a signal.',
++    }),
++  },
++
++  // -------------------------------------------------------------- MEDIUM
++  {
++    id: 'loop-count', topic: 'loops', difficulty: 'medium',
++    make: (rng) => {
++      const times = int(rng, 3, 8);
++      const per = int(rng, 2, 4);
++      const total = times * per;
++      return mc({
++        rng, topic: 'loops', difficulty: 'medium',
++        q: `A repeat loop runs ${times} times. Inside it are ${per} "move forward 1 square" blocks. How many squares does the robot travel in total?`,
++        correct: `${total}`,
++        wrong: distinct(`${total}`, [`${times + per}`, `${times}`, `${per}`, `${total - per}`], 3),
++        why: `Each pass moves ${per}, and there are ${times} passes: ${times} × ${per} = ${total}.`,
++      });
++    },
++  },
++  {
++    id: 'trace-2', topic: 'tracing', difficulty: 'medium',
++    make: (rng) => {
++      const start = { x: 0, y: 0, dir: 'north' };
++      const n1 = int(rng, 1, 4);
++      const turn = pick(rng, ['right', 'left']);
++      const n2 = int(rng, 1, 4);
++      const program = [{ op: 'move', n: n1 }, { op: 'turn', dir: turn }, { op: 'move', n: n2 }];
++      const end = traceProgram(start, program);
++      const wrongTurn = traceProgram(start, [{ op: 'move', n: n1 }, { op: 'turn', dir: turn === 'right' ? 'left' : 'right' }, { op: 'move', n: n2 }]);
++      const swapped = traceProgram(start, [{ op: 'move', n: n2 }, { op: 'turn', dir: turn }, { op: 'move', n: n1 }]);
++      return mc({
++        rng, topic: 'tracing', difficulty: 'medium',
++        q: `The robot starts at (0, 0) facing north. It runs: move ${n1}, turn ${turn}, move ${n2}. Where does it end up?`,
++        correct: fmt(end),
++        wrong: distinct(fmt(end), [fmt(wrongTurn), fmt(swapped), fmt({ x: end.x, y: end.y, dir: start.dir })], 3),
++        why: `Move ${n1} north → (0, ${n1}). Turning ${turn} from north faces ${end.dir}. Then move ${n2} → ${fmt(end)}.`,
++      });
++    },
++  },
++  {
++    id: 'sensor-threshold', topic: 'sensing', difficulty: 'medium',
++    make: (rng) => {
++      const stopAt = int(rng, 2, 6);
++      const reading = int(rng, 1, 10);
++      const stops = reading < stopAt;
++      return mc({
++        rng, topic: 'sensing', difficulty: 'medium',
++        q: `Your program says: repeat "move forward 1" UNTIL distance < ${stopAt} squares. The sensor currently reads ${reading}. Does the robot move on this pass?`,
++        correct: stops ? 'No — the until-condition is already true, so the loop stops' : 'Yes — the condition is not met yet, so it keeps going',
++        wrong: [
++          stops ? 'Yes — the condition is not met yet, so it keeps going' : 'No — the until-condition is already true, so the loop stops',
++          'It depends on the battery level',
++        ],
++        why: `The loop ends when distance < ${stopAt}. Reading ${reading} is ${stops ? 'less than' : 'not less than'} ${stopAt}.`,
++      });
++    },
++  },
++  {
++    id: 'gear-ratio', topic: 'motors', difficulty: 'medium',
++    make: (rng) => {
++      const driver = pick(rng, [8, 10, 12]);
++      const driven = pick(rng, [24, 30, 36, 40]);
++      const ratio = driven / driver;
++      const faster = ratio < 1;
++      return mc({
++        rng, topic: 'motors', difficulty: 'medium',
++        q: `A ${driver}-tooth gear drives a ${driven}-tooth gear. Compared with the motor, the output turns…`,
++        correct: `${ratio.toFixed(ratio % 1 ? 1 : 0)}× slower, with more torque`,
++        wrong: distinct(`${ratio.toFixed(ratio % 1 ? 1 : 0)}× slower, with more torque`, [
++          `${ratio.toFixed(ratio % 1 ? 1 : 0)}× faster, with less torque`,
++          'at the same speed, with more torque',
++          `${(driven - driver)}× slower, with less torque`,
++        ], 3),
++        why: `Big driven by small = slower and stronger. ${driven} ÷ ${driver} = ${ratio}. Gears trade speed for torque; they never create free power.`,
++      });
++    },
++  },
++  {
++    id: 'ohm-intuition', topic: 'electricity', difficulty: 'medium',
++    make: (rng) => {
++      const v = pick(rng, [3, 5, 9, 12]);
++      const r = pick(rng, [100, 220, 470, 1000]);
++      const mA = Math.round((v / r) * 1000);
++      return mc({
++        rng, topic: 'electricity', difficulty: 'medium',
++        q: `Ohm's law is I = V ÷ R. With a ${v}V supply and a ${r}Ω resistor, roughly how much current flows?`,
++        correct: `about ${mA} mA`,
++        wrong: distinct(`about ${mA} mA`, [`about ${mA * 2} mA`, `about ${Math.max(1, Math.round(mA / 2))} mA`, `about ${v * r} mA`], 3),
++        why: `${v} ÷ ${r} = ${(v / r).toFixed(4)} A ≈ ${mA} mA. More resistance means less current for the same push.`,
++      });
++    },
++  },
++
++  // ---------------------------------------------------------------- HARD
++  {
++    id: 'trace-loop', topic: 'tracing', difficulty: 'hard',
++    make: (rng) => {
++      const times = int(rng, 2, 4);
++      const n = int(rng, 1, 3);
++      const turn = pick(rng, ['right', 'left']);
++      const start = { x: 0, y: 0, dir: 'north' };
++      const body = [{ op: 'move', n }, { op: 'turn', dir: turn }];
++      const program = Array.from({ length: times }, () => body).flat();
++      const end = traceProgram(start, program);
++      const offByOne = traceProgram(start, Array.from({ length: times - 1 }, () => body).flat());
++      const noTurns = traceProgram(start, [{ op: 'move', n: n * times }]);
++      return mc({
++        rng, topic: 'tracing', difficulty: 'hard',
++        q: `Start at (0, 0) facing north. Repeat ${times} times: [ move ${n}, turn ${turn} ]. Where does the robot finish?`,
++        correct: fmt(end),
++        wrong: distinct(fmt(end), [fmt(offByOne), fmt(noTurns), fmt({ ...end, dir: start.dir })], 3),
++        why: `Each pass moves ${n} then rotates 90° ${turn}. After ${times} passes the heading has turned ${times * 90}° — remember the LAST turn still happens, even though nothing moves after it.`,
++      });
++    },
++  },
++  {
++    id: 'debug-order', topic: 'debugging', difficulty: 'hard',
++    make: (rng) => {
++      const stopAt = int(rng, 2, 5);
++      return mc({
++        rng, topic: 'debugging', difficulty: 'hard',
++        q: `A robot is meant to stop before a wall, but it always crashes. The program is: repeat forever [ move forward 1 ] and separately, if distance < ${stopAt} then stop. Why does it crash?`,
++        correct: 'The check never runs — it sits outside the loop, so it is only evaluated once (or not at all) while the loop drives forever',
++        wrong: [
++          `The threshold ${stopAt} is too small for any robot`,
++          'The distance sensor cannot see walls that are straight ahead',
++          'Motors are always faster than sensors, so stopping is impossible',
++        ],
++        why: 'A condition only protects you if it is checked on every pass. Move the if INSIDE the loop — this is the single most common beginner bug in sensing code.',
++      });
++    },
++  },
++  {
++    id: 'debug-blink', topic: 'debugging', difficulty: 'hard',
++    make: (rng) => {
++      const n = int(rng, 3, 6);
++      return mc({
++        rng, topic: 'debugging', difficulty: 'hard',
++        q: `You want the LED to blink ${n} times. Your loop repeats ${n} times and contains only "LED on". The LED lights once and stays lit. What is missing?`,
++        correct: 'An "LED off" (and a short wait) inside the loop — a blink is on THEN off',
++        wrong: [
++          `The loop should repeat ${n * 2} times instead`,
++          'The LED needs more voltage to blink',
++          'Blinking requires an event block',
++        ],
++        why: 'Turning something on that is already on changes nothing. A blink is a state CHANGE: on, pause, off, pause.',
++      });
++    },
++  },
++  {
++    id: 'torque-tradeoff', topic: 'motors', difficulty: 'hard',
++    make: (rng) => {
++      const ratio = pick(rng, [3, 4, 5]);
++      return mc({
++        rng, topic: 'motors', difficulty: 'hard',
++        q: `You gear a robot down ${ratio}:1 so it can climb a ramp. What happens to its top speed on flat ground, and why?`,
++        correct: `It drops to about 1/${ratio} of before — gearing trades speed for torque, it does not add power`,
++        wrong: [
++          `It stays the same — gearing only affects torque`,
++          `It also increases ${ratio}× — stronger means faster`,
++          'It becomes unpredictable because torque and speed are unrelated',
++        ],
++        why: 'Power ≈ torque × speed. Gears move the balance between the two; the motor still supplies the same power.',
++      });
++    },
++  },
++  {
++    id: 'event-vs-loop', topic: 'events', difficulty: 'hard',
++    make: (rng) => mc({
++      rng, topic: 'events', difficulty: 'hard',
++      q: 'Why do real robots use events rather than one giant loop that checks everything?',
++      correct: 'Events let separate things react independently, without one slow check delaying all the others',
++      wrong: [
++        'Events run faster than loops on every processor',
++        'Loops are not supported by microcontrollers',
++        'Events use less electricity than loops in all cases',
++      ],
++      why: 'A single loop couples everything to its slowest step. Events decouple: a bump sensor can react while a navigation routine is still thinking.',
++    }),
++  },
++  {
++    id: 'sensor-blindspot', topic: 'sensing', difficulty: 'hard',
++    make: (rng) => {
++      const d = int(rng, 2, 5);
++      return mc({
++        rng, topic: 'sensing', difficulty: 'hard',
++        q: `Your robot stops correctly at ${d} squares from a flat wall, but drives straight into a wall approached at a sharp angle. What is the most likely reason?`,
++        correct: 'A distance sensor measures along one narrow line — an angled surface reflects the signal away instead of back',
++        wrong: [
++          'Angled walls are further away, so the reading is always larger',
++          'The motors turn faster when approaching at an angle',
++          'The threshold value changes automatically on turns',
++        ],
++        why: 'Real sensors have a field of view and depend on reflection. Knowing what a sensor CANNOT see is as important as reading its value.',
++      });
++    },
++  },
++];
++
++export const TOPICS = [...new Set(TEMPLATES.map((t) => t.topic))];
++export const DIFFICULTIES = ['easy', 'medium', 'hard'];
++
++export function templateCount(difficulty) {
++  return TEMPLATES.filter((t) => t.difficulty === difficulty).length;
++}
++
++/**
++ * Build a fresh set of questions.
++ * @param {'easy'|'medium'|'hard'} difficulty
++ * @param {number} count
++ * @param {number} [seed]  omit for a genuinely new set each attempt
++ */
++export function pickQuestions(difficulty, count = 5, seed = Date.now() ^ Math.floor(Math.random() * 1e9)) {
++  const rng = makeRng(seed);
++  const pool = TEMPLATES.filter((t) => t.difficulty === difficulty);
++  if (!pool.length) return [];
++
++  // Prefer not to repeat a template within one attempt; only reuse if the
++  // learner asked for more questions than there are templates.
++  const order = shuffle(rng, pool);
++  const chosen = [];
++  for (let i = 0; i < count; i++) chosen.push(order[i % order.length]);
++
++  return chosen.map((tpl, i) => ({ id: `${tpl.id}#${i}`, templateId: tpl.id, ...tpl.make(rng) }));
++}
+diff --git a/src/lib/progress.js b/src/lib/progress.js
+index 80eb632..62bdfe7 100644
+--- a/src/lib/progress.js
++++ b/src/lib/progress.js
+@@ -9,8 +9,12 @@ const EMPTY = {
+   quizScores: {},       // slug -> { score, total }
+   activeDays: [],       // 'YYYY-MM-DD' with any completed activity (friendly streaks)
+   badges: [],
++  assessments: [],      // { at, difficulty, score, total } — newest last, capped
++  topicStats: {},       // topic -> { right, wrong } across all assessment answers
+ };
+ 
++const MAX_ASSESSMENT_HISTORY = 50;
++
+ export function load() {
+   try {
+     const raw = localStorage.getItem(KEY);
+@@ -53,12 +57,61 @@ export function isComplete(slug) {
+   return load().completed.includes(slug);
+ }
+ 
++// --- Assessment tracking --------------------------------------------------
++// The assessment page generates fresh questions every attempt, so there is no
++// per-question id worth storing. What IS worth storing is the shape of the
++// learner's understanding: score history (are they improving?) and per-topic
++// hit rate (what should they revisit?).
++
++/**
++ * @param {'easy'|'medium'|'hard'} difficulty
++ * @param {Array<{topic: string, correct: boolean}>} answers
++ */
++export function recordAssessment(difficulty, answers) {
++  const s = load();
++  const score = answers.filter((a) => a.correct).length;
++
++  s.assessments.push({ at: new Date().toISOString(), difficulty, score, total: answers.length });
++  if (s.assessments.length > MAX_ASSESSMENT_HISTORY)
++    s.assessments = s.assessments.slice(-MAX_ASSESSMENT_HISTORY);
++
++  for (const a of answers) {
++    const t = (s.topicStats[a.topic] = s.topicStats[a.topic] || { right: 0, wrong: 0 });
++    a.correct ? t.right++ : t.wrong++;
++  }
++
++  if (!s.activeDays.includes(today())) s.activeDays.push(today());
++  awardBadges(s);
++  save(s);
++  return s;
++}
++
++/** Topics sorted worst-first, so the UI can say what to revisit. */
++export function topicMastery() {
++  const stats = load().topicStats;
++  return Object.entries(stats)
++    .map(([topic, { right, wrong }]) => ({
++      topic,
++      right,
++      wrong,
++      asked: right + wrong,
++      ratio: right + wrong ? right / (right + wrong) : 0,
++    }))
++    .sort((a, b) => a.ratio - b.ratio || b.asked - a.asked);
++}
++
++export function bestAssessment(difficulty) {
++  const runs = load().assessments.filter((a) => a.difficulty === difficulty);
++  if (!runs.length) return null;
++  return runs.reduce((best, r) => (r.score / r.total > best.score / best.total ? r : best));
++}
++
+ // --- Confidence gate (locked decision made concrete) ---------------------
+ // "Ready for hardware" means: every checkpoint lesson in modules 1-2 is
+ // complete AND the gate quiz scored >= 80%. Adjust GATE below as the
+ // curriculum grows; keep the definition in one place.
+ export const GATE = {
+-  requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm5-obstacle-course'],
++  requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm4-motors-gears', 'm5-obstacle-course'],
+   gateQuiz: 'm5-gate-quiz',
+   minRatio: 0.8,
+ };
+@@ -78,6 +131,11 @@ function awardBadges(s) {
+   if (s.completed.length >= 5 && !has('circuit-cadet')) s.badges.push('circuit-cadet');
+   if (s.activeDays.length >= 3 && !has('three-day-streak')) s.badges.push('three-day-streak');
+   if (gateStatusFrom(s).open && !has('hardware-ready')) s.badges.push('hardware-ready');
++
++  const perfect = (d) => (s.assessments || []).some((a) => a.difficulty === d && a.score === a.total && a.total >= 5);
++  if (perfect('easy') && !has('quick-study')) s.badges.push('quick-study');
++  if (perfect('medium') && !has('systems-thinker')) s.badges.push('systems-thinker');
++  if (perfect('hard') && !has('debugger')) s.badges.push('debugger');
+ }
+ function gateStatusFrom(s) {
+   const missing = GATE.requiredCheckpoints.filter((c) => !s.completed.includes(c));
+@@ -91,6 +149,9 @@ export const BADGE_LABELS = {
+   'circuit-cadet': '🔌 Circuit Cadet — five lessons down',
+   'three-day-streak': '📅 Three Active Days',
+   'hardware-ready': '🤖 Hardware Ready — confidence gate cleared',
++  'quick-study': '📗 Quick Study — perfect score on an easy assessment',
++  'systems-thinker': '📘 Systems Thinker — perfect score on a medium assessment',
++  'debugger': '📕 Debugger — perfect score on a hard assessment',
+ };
+ 
+ // --- Export / import (localStorage is fragile; give the user a backup) ----
 diff --git a/src/lib/share.js b/src/lib/share.js
 new file mode 100644
 index 0000000..5622864
@@ -3908,6 +5040,217 @@ index 0000000..017ab10
 +
 +  return full;
 +}
+diff --git a/src/pages/assessment.astro b/src/pages/assessment.astro
+new file mode 100644
+index 0000000..49e469c
+--- /dev/null
++++ b/src/pages/assessment.astro
+@@ -0,0 +1,205 @@
++---
++import Base from '../layouts/Base.astro';
++---
++<Base title="Assessment">
++  <p class="eyebrow">Check your knowledge</p>
++  <h1>Assessment</h1>
++  <p>
++    Pick a difficulty and get a fresh set of questions — <strong>new every single
++    time</strong>, with the numbers, programs, and answer order regenerated on each
++    attempt. There is nothing to memorise, so a good score means you actually
++    understand it.
++  </p>
++
++  <div class="levels" role="group" aria-label="Choose a difficulty">
++    <button class="level card" data-difficulty="easy">
++      <span class="lvl-name">Easy</span>
++      <span class="lvl-desc">Recall — do you know what the words mean?</span>
++      <span class="lvl-best eyebrow"></span>
++    </button>
++    <button class="level card" data-difficulty="medium">
++      <span class="lvl-name">Medium</span>
++      <span class="lvl-desc">Apply — given a rule, predict one step.</span>
++      <span class="lvl-best eyebrow"></span>
++    </button>
++    <button class="level card" data-difficulty="hard">
++      <span class="lvl-name">Hard</span>
++      <span class="lvl-desc">Trace &amp; debug — run it in your head, then find the fault.</span>
++      <span class="lvl-best eyebrow"></span>
++    </button>
++  </div>
++
++  <section id="exam" class="card card-do" hidden>
++    <div class="exam-head">
++      <p class="eyebrow" id="exam-label"></p>
++      <button class="btn btn-quiet btn-sm" id="abandon" type="button">Choose a different level</button>
++    </div>
++    <div id="questions"></div>
++    <button class="btn" id="submit" type="button">Check my answers</button>
++    <p class="result" role="status" id="result"></p>
++    <div id="review"></div>
++    <div class="again" hidden id="again-row">
++      <button class="btn" id="again" type="button">↻ New questions, same level</button>
++      <a class="btn btn-quiet" href="/progress/">See my progress →</a>
++    </div>
++  </section>
++
++  <section class="card-note">
++    <p>
++      <strong>Why the questions are generated, not written by an AI:</strong> an
++      assessment is the one place a wrong answer key does real damage. Every question
++      here is built from a template that <em>computes</em> its own answer — the trace
++      questions literally simulate the robot — so the key is correct by construction.
++      It also costs nothing to run and works offline.
++    </p>
++  </section>
++</Base>
++
++<script>
++  import { pickQuestions, templateCount } from '../lib/assessment.js';
++  import { recordAssessment, bestAssessment } from '../lib/progress.js';
++
++  const COUNT = 5;
++  const exam = document.getElementById('exam');
++  const host = document.getElementById('questions');
++  const submit = document.getElementById('submit');
++  const result = document.getElementById('result');
++  const review = document.getElementById('review');
++  const againRow = document.getElementById('again-row');
++  const label = document.getElementById('exam-label');
++
++  let current = { difficulty: null, questions: [] };
++
++  function paintBests() {
++    for (const btn of document.querySelectorAll('.level')) {
++      const d = btn.dataset.difficulty;
++      const best = bestAssessment(d);
++      const el = btn.querySelector('.lvl-best');
++      el.textContent = best
++        ? `best ${best.score}/${best.total} · ${templateCount(d)} question types`
++        : `${templateCount(d)} question types · not tried yet`;
++    }
++  }
++
++  function start(difficulty) {
++    current = { difficulty, questions: pickQuestions(difficulty, COUNT) };
++    label.textContent = `${difficulty} · ${COUNT} questions`;
++    exam.hidden = false;
++    submit.hidden = false;
++    submit.disabled = false;
++    result.textContent = '';
++    review.innerHTML = '';
++    againRow.hidden = true;
++    host.innerHTML = '';
++
++    current.questions.forEach((item, qi) => {
++      const fs = document.createElement('fieldset');
++      fs.className = 'q';
++      const lg = document.createElement('legend');
++      lg.textContent = `${qi + 1}. ${item.q}`;
++      fs.appendChild(lg);
++      item.options.forEach((opt, oi) => {
++        const lab = document.createElement('label');
++        const input = document.createElement('input');
++        input.type = 'radio';
++        input.name = `q${qi}`;
++        input.value = String(oi);
++        lab.append(input, ' ', opt);
++        fs.appendChild(lab);
++      });
++      host.appendChild(fs);
++    });
++
++    exam.scrollIntoView({ behavior: 'smooth', block: 'start' });
++  }
++
++  for (const btn of document.querySelectorAll('.level')) {
++    btn.addEventListener('click', () => start(btn.dataset.difficulty));
++  }
++
++  document.getElementById('abandon').addEventListener('click', () => {
++    exam.hidden = true;
++    window.scrollTo({ top: 0, behavior: 'smooth' });
++  });
++
++  document.getElementById('again').addEventListener('click', () => start(current.difficulty));
++
++  submit.addEventListener('click', () => {
++    const answers = [];
++    let unanswered = 0;
++
++    current.questions.forEach((item, qi) => {
++      const fs = host.children[qi];
++      const picked = fs.querySelector('input:checked');
++      if (!picked) unanswered++;
++      const correct = !!picked && Number(picked.value) === item.answer;
++      fs.classList.toggle('right', correct);
++      fs.classList.toggle('wrong', !correct);
++      answers.push({ topic: item.topic, correct });
++    });
++
++    if (unanswered) {
++      result.textContent = `${unanswered} question${unanswered > 1 ? 's' : ''} still unanswered — have a go at ${unanswered > 1 ? 'them' : 'it'} before checking. A guess tells you more than a blank.`;
++      return;
++    }
++
++    const score = answers.filter((a) => a.correct).length;
++    recordAssessment(current.difficulty, answers);
++
++    result.textContent =
++      score === answers.length
++        ? `🎉 ${score}/${answers.length} — every one. Try the next level up.`
++        : score / answers.length >= 0.6
++          ? `${score}/${answers.length} — solid. Read the explanations below, then run it again for a different set.`
++          : `${score}/${answers.length}. That is what practice is for — the explanations below are the useful bit.`;
++
++    // Explanations are the point of the exercise, so always show them all.
++    review.innerHTML = '';
++    current.questions.forEach((item, qi) => {
++      const p = document.createElement('p');
++      p.className = `explain ${answers[qi].correct ? 'ok' : 'no'}`;
++      p.textContent = `${qi + 1}. ${answers[qi].correct ? '✓' : '✗'} ${item.options[item.answer]} — ${item.why}`;
++      review.appendChild(p);
++    });
++
++    submit.disabled = true;
++    againRow.hidden = false;
++    paintBests();
++  });
++
++  paintBests();
++</script>
++
++<style>
++  .levels { display: grid; gap: 0.8rem; grid-template-columns: 1fr; margin: 1.5rem 0; }
++  @media (min-width: 720px) { .levels { grid-template-columns: repeat(3, 1fr); } }
++
++  .level {
++    text-align: left;
++    cursor: pointer;
++    font: inherit;
++    color: inherit;
++    display: flex;
++    flex-direction: column;
++    gap: 0.3rem;
++    border: 2px solid var(--grid);
++    transition: border-color 100ms ease, transform 100ms ease;
++  }
++  .level:hover { border-color: var(--ink); transform: translate(-1px, -1px); }
++  .lvl-name { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; }
++  .lvl-desc { font-size: 0.9rem; color: var(--ink-soft); }
++  .lvl-best { margin-top: auto; }
++
++  .exam-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
++  .q { border: 0; border-top: 1px solid var(--grid); padding: 0.8rem 0 0.4rem; margin: 0.8rem 0 0; }
++  .q legend { font-weight: 700; padding: 0; }
++  .q label { display: block; margin: 0.35rem 0; cursor: pointer; }
++  .q.right legend::after { content: ' ✓'; color: var(--go); }
++  .q.wrong legend::after { content: ' ✗'; color: var(--danger); }
++
++  .result { font-weight: 700; min-height: 1.4em; margin-top: 0.9rem; }
++  .explain { font-size: 0.9rem; margin: 0.4rem 0; padding-left: 0.7rem; border-left: 3px solid var(--grid); }
++  .explain.ok { border-left-color: var(--go); }
++  .explain.no { border-left-color: var(--danger); }
++  .again { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
++</style>
 diff --git a/src/pages/modules/[...slug].astro b/src/pages/modules/[...slug].astro
 index 5bc45c3..97a474d 100644
 --- a/src/pages/modules/[...slug].astro
@@ -3952,6 +5295,244 @@ index 5bc45c3..97a474d 100644
 +    flex-wrap: wrap;
 +  }
  </style>
+diff --git a/src/pages/progress.astro b/src/pages/progress.astro
+new file mode 100644
+index 0000000..e4d3239
+--- /dev/null
++++ b/src/pages/progress.astro
+@@ -0,0 +1,232 @@
++---
++import { getCollection } from 'astro:content';
++import Base from '../layouts/Base.astro';
++import ProgressTrace from '../components/ProgressTrace.astro';
++
++const lessons = (await getCollection('modules')).sort(
++  (a, b) => a.data.module - b.data.module || a.data.order - b.data.order
++);
++
++const byModule = new Map();
++for (const l of lessons) {
++  if (!byModule.has(l.data.module)) byModule.set(l.data.module, { title: l.data.moduleTitle, lessons: [] });
++  byModule.get(l.data.module).lessons.push(l);
++}
++const totalLessons = lessons.length;
++---
++<Base title="Progress">
++  <p class="eyebrow">Where you are</p>
++  <h1>Your progress</h1>
++
++  <section class="card card-do overview">
++    <div class="big">
++      <span id="pct">0%</span>
++      <span class="eyebrow" id="pct-sub">0 of {totalLessons} lessons</span>
++    </div>
++    <dl class="stats">
++      <div><dt class="eyebrow">Active days</dt><dd id="stat-days">0</dd></div>
++      <div><dt class="eyebrow">Assessments taken</dt><dd id="stat-exams">0</dd></div>
++      <div><dt class="eyebrow">Badges</dt><dd id="stat-badges">0</dd></div>
++      <div><dt class="eyebrow">Hardware gate</dt><dd id="stat-gate">Locked</dd></div>
++    </dl>
++  </section>
++
++  <h2>By module</h2>
++  {[...byModule.entries()].map(([num, mod]) => (
++    <section class="card mod">
++      <p class="eyebrow">Module {num}</p>
++      <h3>{mod.title}</h3>
++      <ProgressTrace slugs={mod.lessons.map((l) => l.id)} />
++      <ul class="lesson-list" data-module={num}>
++        {mod.lessons.map((l) => (
++          <li data-slug={l.id}>
++            <span class="tick" aria-hidden="true">○</span>
++            <a href={`/modules/${l.id}/`}>{l.data.title}</a>
++            {l.data.checkpoint && <span class="chip-mini">checkpoint</span>}
++          </li>
++        ))}
++      </ul>
++    </section>
++  ))}
++
++  <h2>What you've mastered</h2>
++  <section class="card">
++    <p class="eyebrow">From your assessment answers, weakest first</p>
++    <div id="mastery"><p class="muted">Take an assessment and this fills in — it shows which topics to revisit, not just a score.</p></div>
++    <p><a class="btn btn-quiet" href="/assessment/">Take an assessment →</a></p>
++  </section>
++
++  <h2>Assessment history</h2>
++  <section class="card">
++    <div id="history"><p class="muted">No attempts yet.</p></div>
++  </section>
++
++  <h2>Checkpoint quiz scores</h2>
++  <section class="card">
++    <div id="quizzes"><p class="muted">No checkpoint quizzes taken yet.</p></div>
++  </section>
++
++  <h2>Badges</h2>
++  <section class="card">
++    <div id="badges"><p class="muted">None yet — finish a lesson to earn your first.</p></div>
++  </section>
++
++  <h2>Back it up</h2>
++  <section class="card">
++    <p>Progress lives in this browser only. No accounts, nothing sent anywhere — which also means clearing your browser data erases it.</p>
++    <div class="backup">
++      <button class="btn btn-quiet" id="export-progress">⬇ Export progress</button>
++      <label class="btn btn-quiet">⬆ Import progress<input type="file" id="import-progress" accept=".json" hidden /></label>
++    </div>
++  </section>
++</Base>
++
++<script>
++  import { load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress } from '../lib/progress.js';
++
++  const TOTAL = Number(document.querySelectorAll('.lesson-list li').length);
++
++  function paint() {
++    const s = load();
++    const done = s.completed.length;
++
++    document.getElementById('pct').textContent = TOTAL ? `${Math.round((done / TOTAL) * 100)}%` : '0%';
++    document.getElementById('pct-sub').textContent = `${done} of ${TOTAL} lessons`;
++    document.getElementById('stat-days').textContent = String(s.activeDays.length);
++    document.getElementById('stat-exams').textContent = String((s.assessments || []).length);
++    document.getElementById('stat-badges').textContent = String(s.badges.length);
++
++    const gate = gateStatus();
++    document.getElementById('stat-gate').textContent = gate.open
++      ? 'Open 🎉'
++      : `Locked · ${gate.missing.length} left`;
++
++    for (const li of document.querySelectorAll('.lesson-list li')) {
++      const ok = s.completed.includes(li.dataset.slug);
++      li.classList.toggle('done', ok);
++      li.querySelector('.tick').textContent = ok ? '●' : '○';
++    }
++
++    // --- mastery ---------------------------------------------------------
++    const mastery = topicMastery();
++    const mHost = document.getElementById('mastery');
++    if (mastery.length) {
++      mHost.innerHTML = '';
++      for (const m of mastery) {
++        const row = document.createElement('div');
++        row.className = 'bar-row';
++        const pct = Math.round(m.ratio * 100);
++        row.innerHTML =
++          `<span class="bar-label">${m.topic}</span>` +
++          `<span class="bar"><span class="bar-fill" style="width:${pct}%"></span></span>` +
++          `<span class="bar-num eyebrow">${m.right}/${m.asked}</span>`;
++        if (m.ratio < 0.6) row.classList.add('weak');
++        mHost.appendChild(row);
++      }
++      const worst = mastery[0];
++      if (worst && worst.ratio < 0.6) {
++        const tip = document.createElement('p');
++        tip.className = 'tip';
++        tip.textContent = `Worth revisiting: ${worst.topic}. Ask the tutor about it from any lesson page — it can see the program you're working on.`;
++        mHost.appendChild(tip);
++      }
++    }
++
++    // --- assessment history ---------------------------------------------
++    const runs = (s.assessments || []).slice().reverse();
++    const hHost = document.getElementById('history');
++    if (runs.length) {
++      hHost.innerHTML = '';
++      const table = document.createElement('table');
++      table.innerHTML = '<thead><tr><th>When</th><th>Level</th><th>Score</th></tr></thead>';
++      const tb = document.createElement('tbody');
++      for (const r of runs.slice(0, 15)) {
++        const tr = document.createElement('tr');
++        const when = new Date(r.at);
++        tr.innerHTML =
++          `<td>${when.toLocaleDateString()} ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>` +
++          `<td>${r.difficulty}</td><td>${r.score}/${r.total}</td>`;
++        tb.appendChild(tr);
++      }
++      table.appendChild(tb);
++      hHost.appendChild(table);
++    }
++
++    // --- checkpoint quizzes ---------------------------------------------
++    const qHost = document.getElementById('quizzes');
++    const entries = Object.entries(s.quizScores);
++    if (entries.length) {
++      qHost.innerHTML = '';
++      const ul = document.createElement('ul');
++      for (const [slug, { score, total }] of entries) {
++        const li = document.createElement('li');
++        li.textContent = `${slug} — best ${score}/${total}`;
++        ul.appendChild(li);
++      }
++      qHost.appendChild(ul);
++    }
++
++    // --- badges ----------------------------------------------------------
++    const bHost = document.getElementById('badges');
++    if (s.badges.length) {
++      bHost.innerHTML = '';
++      for (const b of s.badges) {
++        const p = document.createElement('p');
++        p.className = 'badge';
++        p.textContent = BADGE_LABELS[b] || b;
++        bHost.appendChild(p);
++      }
++    }
++  }
++
++  document.getElementById('export-progress')?.addEventListener('click', exportProgress);
++  document.getElementById('import-progress')?.addEventListener('change', (e) => {
++    const file = e.target.files?.[0];
++    if (file) importProgress(file).then(paint).catch(() => alert('That file did not look like a progress backup.'));
++  });
++
++  paint();
++  window.addEventListener('lr-progress', paint);
++</script>
++
++<style>
++  .overview { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
++  .big { display: flex; flex-direction: column; }
++  .big span:first-child { font-family: var(--font-display); font-size: 3rem; line-height: 1; }
++  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.4rem; margin: 0; flex: 1; }
++  @media (min-width: 700px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
++  .stats dt { margin: 0; }
++  .stats dd { margin: 0; font-weight: 700; }
++
++  .mod { margin-bottom: 1rem; }
++  .mod h3 { margin-top: 0.2em; }
++  .lesson-list { list-style: none; padding: 0; margin: 0.4rem 0 0; }
++  .lesson-list li { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
++  .lesson-list .tick { color: var(--lock); }
++  .lesson-list li.done .tick { color: var(--go); }
++  .chip-mini {
++    font-family: var(--font-mono);
++    font-size: 0.68rem;
++    text-transform: uppercase;
++    letter-spacing: 0.08em;
++    color: var(--ink-soft);
++    border: 1px solid var(--grid);
++    border-radius: 999px;
++    padding: 0 0.4rem;
++  }
++
++  .bar-row { display: grid; grid-template-columns: 8rem 1fr 3.5rem; gap: 0.6rem; align-items: center; margin: 0.35rem 0; }
++  .bar-label { font-size: 0.9rem; text-transform: capitalize; }
++  .bar { background: var(--grid); border-radius: 999px; height: 10px; overflow: hidden; }
++  .bar-fill { display: block; height: 100%; background: var(--go); }
++  .bar-row.weak .bar-fill { background: var(--danger); }
++  .tip { margin-top: 0.8rem; font-size: 0.9rem; color: var(--ink-soft); }
++
++  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
++  th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--grid); }
++  th { font-family: var(--font-mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); }
++
++  .badge { margin: 0.2rem 0; }
++  .muted { color: var(--ink-soft); font-size: 0.92rem; }
++  .backup { display: flex; gap: 0.6rem; flex-wrap: wrap; }
++</style>
 diff --git a/src/styles/global.css b/src/styles/global.css
 index bbd775d..8b05e6a 100644
 --- a/src/styles/global.css
