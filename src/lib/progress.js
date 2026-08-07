@@ -9,7 +9,11 @@ const EMPTY = {
   quizScores: {},       // slug -> { score, total }
   activeDays: [],       // 'YYYY-MM-DD' with any completed activity (friendly streaks)
   badges: [],
+  assessments: [],      // { at, difficulty, score, total } — newest last, capped
+  topicStats: {},       // topic -> { right, wrong } across all assessment answers
 };
+
+const MAX_ASSESSMENT_HISTORY = 50;
 
 export function load() {
   try {
@@ -53,12 +57,61 @@ export function isComplete(slug) {
   return load().completed.includes(slug);
 }
 
+// --- Assessment tracking --------------------------------------------------
+// The assessment page generates fresh questions every attempt, so there is no
+// per-question id worth storing. What IS worth storing is the shape of the
+// learner's understanding: score history (are they improving?) and per-topic
+// hit rate (what should they revisit?).
+
+/**
+ * @param {'easy'|'medium'|'hard'} difficulty
+ * @param {Array<{topic: string, correct: boolean}>} answers
+ */
+export function recordAssessment(difficulty, answers) {
+  const s = load();
+  const score = answers.filter((a) => a.correct).length;
+
+  s.assessments.push({ at: new Date().toISOString(), difficulty, score, total: answers.length });
+  if (s.assessments.length > MAX_ASSESSMENT_HISTORY)
+    s.assessments = s.assessments.slice(-MAX_ASSESSMENT_HISTORY);
+
+  for (const a of answers) {
+    const t = (s.topicStats[a.topic] = s.topicStats[a.topic] || { right: 0, wrong: 0 });
+    a.correct ? t.right++ : t.wrong++;
+  }
+
+  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  awardBadges(s);
+  save(s);
+  return s;
+}
+
+/** Topics sorted worst-first, so the UI can say what to revisit. */
+export function topicMastery() {
+  const stats = load().topicStats;
+  return Object.entries(stats)
+    .map(([topic, { right, wrong }]) => ({
+      topic,
+      right,
+      wrong,
+      asked: right + wrong,
+      ratio: right + wrong ? right / (right + wrong) : 0,
+    }))
+    .sort((a, b) => a.ratio - b.ratio || b.asked - a.asked);
+}
+
+export function bestAssessment(difficulty) {
+  const runs = load().assessments.filter((a) => a.difficulty === difficulty);
+  if (!runs.length) return null;
+  return runs.reduce((best, r) => (r.score / r.total > best.score / best.total ? r : best));
+}
+
 // --- Confidence gate (locked decision made concrete) ---------------------
 // "Ready for hardware" means: every checkpoint lesson in modules 1-2 is
 // complete AND the gate quiz scored >= 80%. Adjust GATE below as the
 // curriculum grows; keep the definition in one place.
 export const GATE = {
-  requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm5-obstacle-course'],
+  requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm4-motors-gears', 'm5-obstacle-course'],
   gateQuiz: 'm5-gate-quiz',
   minRatio: 0.8,
 };
@@ -78,6 +131,11 @@ function awardBadges(s) {
   if (s.completed.length >= 5 && !has('circuit-cadet')) s.badges.push('circuit-cadet');
   if (s.activeDays.length >= 3 && !has('three-day-streak')) s.badges.push('three-day-streak');
   if (gateStatusFrom(s).open && !has('hardware-ready')) s.badges.push('hardware-ready');
+
+  const perfect = (d) => (s.assessments || []).some((a) => a.difficulty === d && a.score === a.total && a.total >= 5);
+  if (perfect('easy') && !has('quick-study')) s.badges.push('quick-study');
+  if (perfect('medium') && !has('systems-thinker')) s.badges.push('systems-thinker');
+  if (perfect('hard') && !has('debugger')) s.badges.push('debugger');
 }
 function gateStatusFrom(s) {
   const missing = GATE.requiredCheckpoints.filter((c) => !s.completed.includes(c));
@@ -91,6 +149,9 @@ export const BADGE_LABELS = {
   'circuit-cadet': '🔌 Circuit Cadet — five lessons down',
   'three-day-streak': '📅 Three Active Days',
   'hardware-ready': '🤖 Hardware Ready — confidence gate cleared',
+  'quick-study': '📗 Quick Study — perfect score on an easy assessment',
+  'systems-thinker': '📘 Systems Thinker — perfect score on a medium assessment',
+  'debugger': '📕 Debugger — perfect score on a hard assessment',
 };
 
 // --- Export / import (localStorage is fragile; give the user a backup) ----

@@ -22,6 +22,27 @@ So an <Term id="led">LED</Term> lighting up means: a battery pushes (voltage) a 
 
 One more part hiding in your robot: the <Term id="microcontroller">microcontroller</Term> — a tiny cheap computer whose job is to open and close many little circuits very fast. When your program says *turn LED on*, the microcontroller closes the LED's loop. Your blocks have been operating switches all along.
 
+## Under the hood: the one equation
+
+You now know voltage pushes and current flows. The third piece is <Term id="resistance">resistance</Term> — how hard the path fights back, measured in ohms (Ω). All three lock together in <Term id="ohms-law">Ohm's law</Term>:
+
+```
+current = voltage ÷ resistance        I = V ÷ R
+```
+
+That is the whole thing. Try it: a 9V battery through a 470Ω resistor gives 9 ÷ 470 = 0.019 A, or about **19 mA**. Push harder (more volts) and more flows. Fight harder (more ohms) and less flows.
+
+**Why you should care right now:** an LED will happily draw far more current than it can survive and burn itself out in about a second. So you put a resistor in series to hold the current down — that is what the little resistor next to every LED in every kit is doing. It is not decoration; it is Ohm's law keeping your LED alive.
+
+A quick way to sanity-check any circuit you build later:
+
+| If you… | Then current… | Because |
+|---|---|---|
+| swap 9V for 3V | drops to a third | less push, same fight |
+| swap 470Ω for 220Ω | roughly doubles | less fight, same push |
+| forget the resistor | shoots up | almost nothing fighting it — 💥 |
+
+
 **Want to see it for real?** The resources page links SparkFun's "What is a Circuit?" — the classic illustrated walk-through, with a simulation of current flowing.
 
 <Quiz
@@ -30,6 +51,9 @@ One more part hiding in your robot: the <Term id="microcontroller">microcontroll
     { "q": "A circuit is…", "options": ["any wire", "a complete loop electricity can flow around", "a type of battery"], "answer": 1, "why": "No complete loop, no flow. That's why a cut wire kills everything." },
     { "q": "Voltage is like…", "options": ["water pressure — the push", "the hose itself", "the color of the water"], "answer": 0, "why": "Voltage pushes; current is what gets pushed." },
     { "q": "What does a switch really do?", "options": ["adds more current", "opens or closes the loop", "stores electricity"], "answer": 1, "why": "Open loop = off. Closed loop = on. Everything else is decoration." },
-    { "q": "When your block program turns the LED on, the microcontroller…", "options": ["paints the LED", "closes that LED's circuit", "makes new electricity"], "answer": 1, "why": "Code controls switches; switches control circuits; circuits control parts." }
+    { "q": "When your block program turns the LED on, the microcontroller…", "options": ["paints the LED", "closes that LED's circuit", "makes new electricity"], "answer": 1, "why": "Code controls switches; switches control circuits; circuits control parts." },
+    { "q": "Ohm's law says current equals…", "options": ["voltage × resistance", "voltage ÷ resistance", "resistance ÷ voltage"], "answer": 1, "why": "I = V ÷ R. More push means more flow; more resistance means less." },
+    { "q": "A 6V supply through a 200Ω resistor gives roughly…", "options": ["30 mA", "1200 mA", "3 mA"], "answer": 0, "why": "6 ÷ 200 = 0.03 A = 30 mA." },
+    { "q": "Why does an LED need a resistor in series with it?", "options": ["to make it brighter", "to limit the current so it doesn't burn out", "to store charge for later"], "answer": 1, "why": "Without something to fight the flow, the current runs away and the LED dies almost instantly." }
   ]}
 />

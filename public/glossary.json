@@ -3,7 +3,7 @@
     "def": "A machine that senses the world, decides something, and then moves or acts on its own."
   },
   "actuator": {
-    "def": "Any part that makes a robot move or act \u2014 like a motor or a buzzer."
+    "def": "Any part that makes a robot move or act — like a motor or a buzzer."
   },
   "sensor": {
     "def": "A part that lets the robot notice things, like distance, light, or touch."
@@ -18,30 +18,54 @@
     "def": "A named box in a program where you store a value to use later."
   },
   "led": {
-    "def": "A tiny light (Light-Emitting Diode) \u2014 the 'hello world' of electronics."
+    "def": "A tiny light (Light-Emitting Diode) — the 'hello world' of electronics."
   },
   "circuit": {
     "def": "A complete loop that electricity can flow around."
   },
   "motor": {
-    "def": "An actuator that spins \u2014 robots use them to drive wheels."
+    "def": "An actuator that spins — robots use them to drive wheels."
   },
   "microcontroller": {
-    "def": "A small, cheap computer chip that runs one program \u2014 the robot's brain."
+    "def": "A small, cheap computer chip that runs one program — the robot's brain."
   },
   "torque": {
-    "def": "Twisting strength \u2014 how hard a motor can turn, not how fast."
+    "def": "Twisting strength — how hard a motor can turn, not how fast."
   },
   "gear": {
     "def": "A toothed wheel that trades speed for strength (or the reverse) between motors and wheels."
   },
   "current": {
-    "def": "How much electricity is flowing \u2014 like the amount of water moving through a hose."
+    "def": "How much electricity is flowing — like the amount of water moving through a hose."
   },
   "voltage": {
-    "def": "The push behind electricity \u2014 like water pressure in a hose."
+    "def": "The push behind electricity — like water pressure in a hose."
   },
   "event": {
-    "def": "Something that happens and starts code running \u2014 a button press, a timer, a sensor tripping."
+    "def": "Something that happens and starts code running — a button press, a timer, a sensor tripping."
+  },
+  "resistance": {
+    "def": "How much a material fights the flow of current, measured in ohms (Ω). More resistance, less current for the same push."
+  },
+  "ohms-law": {
+    "def": "The rule linking the three: current = voltage ÷ resistance (I = V ÷ R). Know two, you can always work out the third."
+  },
+  "gear-ratio": {
+    "def": "How many turns of the driving gear it takes to turn the driven gear once. A 3:1 ratio means three times slower and roughly three times more torque."
+  },
+  "power": {
+    "def": "How fast energy is delivered. For a spinning motor it is roughly torque × speed — which is why gears can trade one for the other but never create more of both."
+  },
+  "polling": {
+    "def": "Checking a sensor over and over inside a loop to see if anything changed. Simple, but the robot is blind between checks."
+  },
+  "interrupt": {
+    "def": "A signal that makes the microcontroller drop what it is doing and handle something immediately. This is what an event block becomes on real hardware."
+  },
+  "threshold": {
+    "def": "The value a sensor reading is compared against to make a decision — the 'stop if closer than this' number."
+  },
+  "pwm": {
+    "def": "Pulse-width modulation: switching power on and off very fast so a motor or LED behaves as if it were getting a fraction of full power. This is how 'set speed to 2' works on a real robot."
   }
 }

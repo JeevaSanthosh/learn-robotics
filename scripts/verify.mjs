@@ -340,6 +340,34 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
     : ok('C-LABELS', `${referenced.size} UI label(s) referenced in lessons all exist in components`);
 }
 
+// ---------- C-LABIDS: lab ids must be unique and checkpoints self-marking --
+// Two RobotLabs sharing a lessonId share a localStorage workspace key, so they
+// silently overwrite each other's saved blocks. And a checkpoint whose
+// verified lab uses some OTHER id completes a lesson that doesn't exist —
+// the gate then waits forever on a lesson the learner has actually finished.
+{
+  const ids = [];
+  for (const l of lessons)
+    for (const m of l.raw.matchAll(/<RobotLab[\s\S]*?lessonId=["']([^"']+)["']/g))
+      ids.push({ slug: l.slug, id: m[1], checkpoint: l.checkpoint, raw: l.raw });
+
+  const dupes = ids.map((i) => i.id).filter((id, i, a) => a.indexOf(id) !== i);
+  dupes.length
+    ? bad('C-LABIDS', `duplicate RobotLab lessonId (shared workspace storage): ${[...new Set(dupes)].join(', ')}`)
+    : ok('C-LABIDS', `${ids.length} RobotLab ids are unique`);
+
+  for (const l of lessons) {
+    if (!l.checkpoint) continue;
+    const labIds = [...l.raw.matchAll(/<RobotLab[\s\S]*?lessonId=["']([^"']+)["']/g)].map((m) => m[1]);
+    const quizIds = [...l.raw.matchAll(/quizId=["']([^"']+)["']/g)].map((m) => m[1]);
+    // Something in the lesson must be able to complete the lesson's own slug.
+    const nonFreeLab = labIds.includes(l.slug) && !new RegExp(`lessonId=["']${l.slug}["'][\\s\\S]{0,300}?goal=["']free["']`).test(l.raw);
+    nonFreeLab || quizIds.includes(l.slug)
+      ? ok('C-LABIDS', `${l.slug} has a completion path bound to its own slug`)
+      : bad('C-LABIDS', `${l.slug} is a checkpoint but nothing completes the slug "${l.slug}" (lab ids: ${labIds.join(', ') || 'none'})`);
+  }
+}
+
 // ---------- report ----------------------------------------------------------
 console.log(passes.join('\n'));
 if (fails.length) {

@@ -1,0 +1,232 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import ProgressTrace from '../components/ProgressTrace.astro';
+
+const lessons = (await getCollection('modules')).sort(
+  (a, b) => a.data.module - b.data.module || a.data.order - b.data.order
+);
+
+const byModule = new Map();
+for (const l of lessons) {
+  if (!byModule.has(l.data.module)) byModule.set(l.data.module, { title: l.data.moduleTitle, lessons: [] });
+  byModule.get(l.data.module).lessons.push(l);
+}
+const totalLessons = lessons.length;
+---
+<Base title="Progress">
+  <p class="eyebrow">Where you are</p>
+  <h1>Your progress</h1>
+
+  <section class="card card-do overview">
+    <div class="big">
+      <span id="pct">0%</span>
+      <span class="eyebrow" id="pct-sub">0 of {totalLessons} lessons</span>
+    </div>
+    <dl class="stats">
+      <div><dt class="eyebrow">Active days</dt><dd id="stat-days">0</dd></div>
+      <div><dt class="eyebrow">Assessments taken</dt><dd id="stat-exams">0</dd></div>
+      <div><dt class="eyebrow">Badges</dt><dd id="stat-badges">0</dd></div>
+      <div><dt class="eyebrow">Hardware gate</dt><dd id="stat-gate">Locked</dd></div>
+    </dl>
+  </section>
+
+  <h2>By module</h2>
+  {[...byModule.entries()].map(([num, mod]) => (
+    <section class="card mod">
+      <p class="eyebrow">Module {num}</p>
+      <h3>{mod.title}</h3>
+      <ProgressTrace slugs={mod.lessons.map((l) => l.id)} />
+      <ul class="lesson-list" data-module={num}>
+        {mod.lessons.map((l) => (
+          <li data-slug={l.id}>
+            <span class="tick" aria-hidden="true">○</span>
+            <a href={`/modules/${l.id}/`}>{l.data.title}</a>
+            {l.data.checkpoint && <span class="chip-mini">checkpoint</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
+
+  <h2>What you've mastered</h2>
+  <section class="card">
+    <p class="eyebrow">From your assessment answers, weakest first</p>
+    <div id="mastery"><p class="muted">Take an assessment and this fills in — it shows which topics to revisit, not just a score.</p></div>
+    <p><a class="btn btn-quiet" href="/assessment/">Take an assessment →</a></p>
+  </section>
+
+  <h2>Assessment history</h2>
+  <section class="card">
+    <div id="history"><p class="muted">No attempts yet.</p></div>
+  </section>
+
+  <h2>Checkpoint quiz scores</h2>
+  <section class="card">
+    <div id="quizzes"><p class="muted">No checkpoint quizzes taken yet.</p></div>
+  </section>
+
+  <h2>Badges</h2>
+  <section class="card">
+    <div id="badges"><p class="muted">None yet — finish a lesson to earn your first.</p></div>
+  </section>
+
+  <h2>Back it up</h2>
+  <section class="card">
+    <p>Progress lives in this browser only. No accounts, nothing sent anywhere — which also means clearing your browser data erases it.</p>
+    <div class="backup">
+      <button class="btn btn-quiet" id="export-progress">⬇ Export progress</button>
+      <label class="btn btn-quiet">⬆ Import progress<input type="file" id="import-progress" accept=".json" hidden /></label>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress } from '../lib/progress.js';
+
+  const TOTAL = Number(document.querySelectorAll('.lesson-list li').length);
+
+  function paint() {
+    const s = load();
+    const done = s.completed.length;
+
+    document.getElementById('pct').textContent = TOTAL ? `${Math.round((done / TOTAL) * 100)}%` : '0%';
+    document.getElementById('pct-sub').textContent = `${done} of ${TOTAL} lessons`;
+    document.getElementById('stat-days').textContent = String(s.activeDays.length);
+    document.getElementById('stat-exams').textContent = String((s.assessments || []).length);
+    document.getElementById('stat-badges').textContent = String(s.badges.length);
+
+    const gate = gateStatus();
+    document.getElementById('stat-gate').textContent = gate.open
+      ? 'Open 🎉'
+      : `Locked · ${gate.missing.length} left`;
+
+    for (const li of document.querySelectorAll('.lesson-list li')) {
+      const ok = s.completed.includes(li.dataset.slug);
+      li.classList.toggle('done', ok);
+      li.querySelector('.tick').textContent = ok ? '●' : '○';
+    }
+
+    // --- mastery ---------------------------------------------------------
+    const mastery = topicMastery();
+    const mHost = document.getElementById('mastery');
+    if (mastery.length) {
+      mHost.innerHTML = '';
+      for (const m of mastery) {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        const pct = Math.round(m.ratio * 100);
+        row.innerHTML =
+          `<span class="bar-label">${m.topic}</span>` +
+          `<span class="bar"><span class="bar-fill" style="width:${pct}%"></span></span>` +
+          `<span class="bar-num eyebrow">${m.right}/${m.asked}</span>`;
+        if (m.ratio < 0.6) row.classList.add('weak');
+        mHost.appendChild(row);
+      }
+      const worst = mastery[0];
+      if (worst && worst.ratio < 0.6) {
+        const tip = document.createElement('p');
+        tip.className = 'tip';
+        tip.textContent = `Worth revisiting: ${worst.topic}. Ask the tutor about it from any lesson page — it can see the program you're working on.`;
+        mHost.appendChild(tip);
+      }
+    }
+
+    // --- assessment history ---------------------------------------------
+    const runs = (s.assessments || []).slice().reverse();
+    const hHost = document.getElementById('history');
+    if (runs.length) {
+      hHost.innerHTML = '';
+      const table = document.createElement('table');
+      table.innerHTML = '<thead><tr><th>When</th><th>Level</th><th>Score</th></tr></thead>';
+      const tb = document.createElement('tbody');
+      for (const r of runs.slice(0, 15)) {
+        const tr = document.createElement('tr');
+        const when = new Date(r.at);
+        tr.innerHTML =
+          `<td>${when.toLocaleDateString()} ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>` +
+          `<td>${r.difficulty}</td><td>${r.score}/${r.total}</td>`;
+        tb.appendChild(tr);
+      }
+      table.appendChild(tb);
+      hHost.appendChild(table);
+    }
+
+    // --- checkpoint quizzes ---------------------------------------------
+    const qHost = document.getElementById('quizzes');
+    const entries = Object.entries(s.quizScores);
+    if (entries.length) {
+      qHost.innerHTML = '';
+      const ul = document.createElement('ul');
+      for (const [slug, { score, total }] of entries) {
+        const li = document.createElement('li');
+        li.textContent = `${slug} — best ${score}/${total}`;
+        ul.appendChild(li);
+      }
+      qHost.appendChild(ul);
+    }
+
+    // --- badges ----------------------------------------------------------
+    const bHost = document.getElementById('badges');
+    if (s.badges.length) {
+      bHost.innerHTML = '';
+      for (const b of s.badges) {
+        const p = document.createElement('p');
+        p.className = 'badge';
+        p.textContent = BADGE_LABELS[b] || b;
+        bHost.appendChild(p);
+      }
+    }
+  }
+
+  document.getElementById('export-progress')?.addEventListener('click', exportProgress);
+  document.getElementById('import-progress')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) importProgress(file).then(paint).catch(() => alert('That file did not look like a progress backup.'));
+  });
+
+  paint();
+  window.addEventListener('lr-progress', paint);
+</script>
+
+<style>
+  .overview { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
+  .big { display: flex; flex-direction: column; }
+  .big span:first-child { font-family: var(--font-display); font-size: 3rem; line-height: 1; }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.4rem; margin: 0; flex: 1; }
+  @media (min-width: 700px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .stats dt { margin: 0; }
+  .stats dd { margin: 0; font-weight: 700; }
+
+  .mod { margin-bottom: 1rem; }
+  .mod h3 { margin-top: 0.2em; }
+  .lesson-list { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+  .lesson-list li { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
+  .lesson-list .tick { color: var(--lock); }
+  .lesson-list li.done .tick { color: var(--go); }
+  .chip-mini {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    border: 1px solid var(--grid);
+    border-radius: 999px;
+    padding: 0 0.4rem;
+  }
+
+  .bar-row { display: grid; grid-template-columns: 8rem 1fr 3.5rem; gap: 0.6rem; align-items: center; margin: 0.35rem 0; }
+  .bar-label { font-size: 0.9rem; text-transform: capitalize; }
+  .bar { background: var(--grid); border-radius: 999px; height: 10px; overflow: hidden; }
+  .bar-fill { display: block; height: 100%; background: var(--go); }
+  .bar-row.weak .bar-fill { background: var(--danger); }
+  .tip { margin-top: 0.8rem; font-size: 0.9rem; color: var(--ink-soft); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--grid); }
+  th { font-family: var(--font-mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); }
+
+  .badge { margin: 0.2rem 0; }
+  .muted { color: var(--ink-soft); font-size: 0.92rem; }
+  .backup { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+</style>

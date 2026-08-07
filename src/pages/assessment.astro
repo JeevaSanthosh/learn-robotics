@@ -1,0 +1,205 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Assessment">
+  <p class="eyebrow">Check your knowledge</p>
+  <h1>Assessment</h1>
+  <p>
+    Pick a difficulty and get a fresh set of questions — <strong>new every single
+    time</strong>, with the numbers, programs, and answer order regenerated on each
+    attempt. There is nothing to memorise, so a good score means you actually
+    understand it.
+  </p>
+
+  <div class="levels" role="group" aria-label="Choose a difficulty">
+    <button class="level card" data-difficulty="easy">
+      <span class="lvl-name">Easy</span>
+      <span class="lvl-desc">Recall — do you know what the words mean?</span>
+      <span class="lvl-best eyebrow"></span>
+    </button>
+    <button class="level card" data-difficulty="medium">
+      <span class="lvl-name">Medium</span>
+      <span class="lvl-desc">Apply — given a rule, predict one step.</span>
+      <span class="lvl-best eyebrow"></span>
+    </button>
+    <button class="level card" data-difficulty="hard">
+      <span class="lvl-name">Hard</span>
+      <span class="lvl-desc">Trace &amp; debug — run it in your head, then find the fault.</span>
+      <span class="lvl-best eyebrow"></span>
+    </button>
+  </div>
+
+  <section id="exam" class="card card-do" hidden>
+    <div class="exam-head">
+      <p class="eyebrow" id="exam-label"></p>
+      <button class="btn btn-quiet btn-sm" id="abandon" type="button">Choose a different level</button>
+    </div>
+    <div id="questions"></div>
+    <button class="btn" id="submit" type="button">Check my answers</button>
+    <p class="result" role="status" id="result"></p>
+    <div id="review"></div>
+    <div class="again" hidden id="again-row">
+      <button class="btn" id="again" type="button">↻ New questions, same level</button>
+      <a class="btn btn-quiet" href="/progress/">See my progress →</a>
+    </div>
+  </section>
+
+  <section class="card-note">
+    <p>
+      <strong>Why the questions are generated, not written by an AI:</strong> an
+      assessment is the one place a wrong answer key does real damage. Every question
+      here is built from a template that <em>computes</em> its own answer — the trace
+      questions literally simulate the robot — so the key is correct by construction.
+      It also costs nothing to run and works offline.
+    </p>
+  </section>
+</Base>
+
+<script>
+  import { pickQuestions, templateCount } from '../lib/assessment.js';
+  import { recordAssessment, bestAssessment } from '../lib/progress.js';
+
+  const COUNT = 5;
+  const exam = document.getElementById('exam');
+  const host = document.getElementById('questions');
+  const submit = document.getElementById('submit');
+  const result = document.getElementById('result');
+  const review = document.getElementById('review');
+  const againRow = document.getElementById('again-row');
+  const label = document.getElementById('exam-label');
+
+  let current = { difficulty: null, questions: [] };
+
+  function paintBests() {
+    for (const btn of document.querySelectorAll('.level')) {
+      const d = btn.dataset.difficulty;
+      const best = bestAssessment(d);
+      const el = btn.querySelector('.lvl-best');
+      el.textContent = best
+        ? `best ${best.score}/${best.total} · ${templateCount(d)} question types`
+        : `${templateCount(d)} question types · not tried yet`;
+    }
+  }
+
+  function start(difficulty) {
+    current = { difficulty, questions: pickQuestions(difficulty, COUNT) };
+    label.textContent = `${difficulty} · ${COUNT} questions`;
+    exam.hidden = false;
+    submit.hidden = false;
+    submit.disabled = false;
+    result.textContent = '';
+    review.innerHTML = '';
+    againRow.hidden = true;
+    host.innerHTML = '';
+
+    current.questions.forEach((item, qi) => {
+      const fs = document.createElement('fieldset');
+      fs.className = 'q';
+      const lg = document.createElement('legend');
+      lg.textContent = `${qi + 1}. ${item.q}`;
+      fs.appendChild(lg);
+      item.options.forEach((opt, oi) => {
+        const lab = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = `q${qi}`;
+        input.value = String(oi);
+        lab.append(input, ' ', opt);
+        fs.appendChild(lab);
+      });
+      host.appendChild(fs);
+    });
+
+    exam.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  for (const btn of document.querySelectorAll('.level')) {
+    btn.addEventListener('click', () => start(btn.dataset.difficulty));
+  }
+
+  document.getElementById('abandon').addEventListener('click', () => {
+    exam.hidden = true;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  document.getElementById('again').addEventListener('click', () => start(current.difficulty));
+
+  submit.addEventListener('click', () => {
+    const answers = [];
+    let unanswered = 0;
+
+    current.questions.forEach((item, qi) => {
+      const fs = host.children[qi];
+      const picked = fs.querySelector('input:checked');
+      if (!picked) unanswered++;
+      const correct = !!picked && Number(picked.value) === item.answer;
+      fs.classList.toggle('right', correct);
+      fs.classList.toggle('wrong', !correct);
+      answers.push({ topic: item.topic, correct });
+    });
+
+    if (unanswered) {
+      result.textContent = `${unanswered} question${unanswered > 1 ? 's' : ''} still unanswered — have a go at ${unanswered > 1 ? 'them' : 'it'} before checking. A guess tells you more than a blank.`;
+      return;
+    }
+
+    const score = answers.filter((a) => a.correct).length;
+    recordAssessment(current.difficulty, answers);
+
+    result.textContent =
+      score === answers.length
+        ? `🎉 ${score}/${answers.length} — every one. Try the next level up.`
+        : score / answers.length >= 0.6
+          ? `${score}/${answers.length} — solid. Read the explanations below, then run it again for a different set.`
+          : `${score}/${answers.length}. That is what practice is for — the explanations below are the useful bit.`;
+
+    // Explanations are the point of the exercise, so always show them all.
+    review.innerHTML = '';
+    current.questions.forEach((item, qi) => {
+      const p = document.createElement('p');
+      p.className = `explain ${answers[qi].correct ? 'ok' : 'no'}`;
+      p.textContent = `${qi + 1}. ${answers[qi].correct ? '✓' : '✗'} ${item.options[item.answer]} — ${item.why}`;
+      review.appendChild(p);
+    });
+
+    submit.disabled = true;
+    againRow.hidden = false;
+    paintBests();
+  });
+
+  paintBests();
+</script>
+
+<style>
+  .levels { display: grid; gap: 0.8rem; grid-template-columns: 1fr; margin: 1.5rem 0; }
+  @media (min-width: 720px) { .levels { grid-template-columns: repeat(3, 1fr); } }
+
+  .level {
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    border: 2px solid var(--grid);
+    transition: border-color 100ms ease, transform 100ms ease;
+  }
+  .level:hover { border-color: var(--ink); transform: translate(-1px, -1px); }
+  .lvl-name { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; }
+  .lvl-desc { font-size: 0.9rem; color: var(--ink-soft); }
+  .lvl-best { margin-top: auto; }
+
+  .exam-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .q { border: 0; border-top: 1px solid var(--grid); padding: 0.8rem 0 0.4rem; margin: 0.8rem 0 0; }
+  .q legend { font-weight: 700; padding: 0; }
+  .q label { display: block; margin: 0.35rem 0; cursor: pointer; }
+  .q.right legend::after { content: ' ✓'; color: var(--go); }
+  .q.wrong legend::after { content: ' ✗'; color: var(--danger); }
+
+  .result { font-weight: 700; min-height: 1.4em; margin-top: 0.9rem; }
+  .explain { font-size: 0.9rem; margin: 0.4rem 0; padding-left: 0.7rem; border-left: 3px solid var(--grid); }
+  .explain.ok { border-left-color: var(--go); }
+  .explain.no { border-left-color: var(--danger); }
+  .again { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+</style>

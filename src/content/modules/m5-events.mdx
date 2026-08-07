@@ -24,3 +24,17 @@ You've been using one all along without seeing it: every program so far ran *whe
 />
 
 On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.
+
+## Under the hood: events vs. asking repeatedly
+
+In the last module you wrote a loop that checks a sensor over and over. That's <Term id="polling">polling</Term>, and it has a cost: the robot can only notice things as often as the loop comes round, and one slow step delays *everything*.
+
+Real microcontrollers offer the alternative: an <Term id="interrupt">interrupt</Term>. The hardware watches a pin itself, and the moment it changes, the processor drops what it's doing, runs a short handler, and returns to where it was. Your "when ▶ Run is pressed" block is the friendly face of exactly this.
+
+| | Polling | Interrupt / event |
+|---|---|---|
+| Notices a change | next time the loop comes round | almost immediately |
+| Costs | CPU time spent asking | nothing until it fires |
+| Best for | values that drift slowly (distance, temperature) | sudden things (bump switch, button, timer) |
+
+**The design rule:** poll for things that change smoothly, use events for things that *happen*. A bump sensor read by polling will miss a fast knock; a temperature read by interrupt would fire constantly for no reason.
