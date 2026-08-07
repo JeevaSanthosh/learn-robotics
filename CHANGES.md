@@ -119,3 +119,60 @@ a real browser before merging.
 **The Pages Functions deploy path has no rate limiter.** Upstream added `CHAT_LIMITER`
 in `worker/index.js` only, so it applies to `wrangler deploy`, not classic Pages. Left
 as-is deliberately — that's an upstream design decision, not mine to change.
+
+---
+
+# Bug-fix pass 2
+
+Reported: the chat panel's **close button did nothing**. Root cause found, plus
+four more bugs in the same audit.
+
+## B1 — `hidden` was being silently overridden (the reported bug)
+
+`.chat-panel { display: flex }` in `ChatWidget.astro` defeated the browser's
+`[hidden] { display: none }`. This is not a specificity tie: `[hidden]` lives in
+the **user-agent** stylesheet, and *every* author rule outranks the user-agent
+origin. So the panel never hid, and the close button appeared dead.
+
+Same bug in `MarkDone.astro`: `.btn { display: inline-block }` meant
+`btn.hidden = true` never hid the button after "I read this".
+
+- **Fix:** `[hidden] { display: none !important; }` in `global.css`.
+- **Guard:** condition `C-HIDDEN` fails CI if that rule is removed, and reports
+  any component CSS that sets `display` on a hidden-toggled element.
+
+## B2 — tapping a glossary term did nothing
+
+`click` toggled on current visibility, but a pointer press fires `focus`
+**before** `click`. Focus opened the tooltip, click immediately closed it. Worst
+on touch — the exact platform this tooltip was rewritten to support.
+Fixed by tracking intent (`pinned`) instead of inferring it from visibility.
+Hovering away no longer dismisses a deliberately-opened tooltip.
+
+## B3 — opening a share link destroyed your own work
+
+Loading a workspace fires Blockly change events, and the change listener
+persists to `localStorage`. So merely *visiting* someone's share link
+overwrote your saved program for that lesson before you touched anything.
+Fixed with a `restoring` flag around the initial load.
+
+## B4 — lesson text pointed at a button that no longer existed
+
+Two lessons say `Tap **Show real code**`; the improvements pass had shortened
+that button to "Real code". Build passed, tests passed, only the learner
+noticed. Button label restored, and condition `C-LABELS` now fails CI when
+lesson instructions reference a UI label no component renders.
+
+## B5 — the test suite couldn't see B1
+
+Added `scripts/test-dom.mjs`: loads the **built** pages into jsdom with the
+**built** CSS, runs the **built** bundles, and drives them by clicking.
+18 tests covering the chat panel, glossary filter, MarkDone, and tooltips.
+
+**Important caveat, verified experimentally:** jsdom does not model the
+user-agent stylesheet origin, so it reports `display: none` for
+`<div class="x" hidden>` even when `.x { display: flex }` would win in a real
+browser. jsdom therefore gives a **false pass** on B1. `C-HIDDEN` is the real
+detector; the DOM tests cover event wiring, not cascade.
+
+Verified: 63 conditions ✓ · 6 interpreter + 11 share/stream + 18 DOM tests ✓

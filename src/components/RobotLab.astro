@@ -44,7 +44,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
           <input type="checkbox" class="autorun-box" checked />
           Auto-run as I build
         </label>
-        <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Real code</button>
+        <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
         <button class="btn btn-quiet btn-sm share">🔗 Share</button>
       </div>
     </div>
@@ -96,9 +96,14 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
 
     // ---- load: shared link wins over the saved local workspace ----------
     const wsKey = `lr-ws-${lessonId}`;
+    // Loading a workspace fires change events. Without this flag those events
+    // wrote the freshly-loaded program straight over the learner's own saved
+    // work — so merely OPENING a friend's share link destroyed your progress
+    // on that lesson before you touched anything.
+    let restoring = true;
     (async () => {
-      const shared = await decodeProgram(location.hash);
       try {
+        const shared = await decodeProgram(location.hash);
         if (shared) {
           Blockly.serialization.workspaces.load(shared, ws);
           setStatus('Loaded a shared program — press ▶ Run to watch it.');
@@ -106,7 +111,11 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
         }
         const saved = localStorage.getItem(wsKey);
         if (saved) Blockly.serialization.workspaces.load(JSON.parse(saved), ws);
-      } catch {}
+      } catch {
+      } finally {
+        // let the load's own change events drain first
+        setTimeout(() => { restoring = false; }, 0);
+      }
     })();
 
     // ---- change handling: save, re-render bridge, maybe auto-run --------
@@ -116,9 +125,11 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
         if (e.type === Blockly.Events.SELECTED) paintBlockHelp();
         return;
       }
-      try {
-        localStorage.setItem(wsKey, JSON.stringify(Blockly.serialization.workspaces.save(ws)));
-      } catch {}
+      if (!restoring) {
+        try {
+          localStorage.setItem(wsKey, JSON.stringify(Blockly.serialization.workspaces.save(ws)));
+        } catch {}
+      }
       renderBridge();
       paintBlockHelp();
 
@@ -200,7 +211,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
     toggle.addEventListener('click', () => {
       bridge.hidden = !bridge.hidden;
       toggle.setAttribute('aria-expanded', String(!bridge.hidden));
-      toggle.innerHTML = bridge.hidden ? '&lt;/&gt; Real code' : '&lt;/&gt; Hide code';
+      toggle.innerHTML = bridge.hidden ? '&lt;/&gt; Show real code' : '&lt;/&gt; Hide real code';
       renderBridge();
       paintBlockHelp();
     });
