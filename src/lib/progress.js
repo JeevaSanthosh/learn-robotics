@@ -11,7 +11,91 @@ const EMPTY = {
   badges: [],
   assessments: [],      // { at, difficulty, score, total } — newest last, capped
   topicStats: {},       // topic -> { right, wrong } across all assessment answers
+  daily: {},            // 'YYYY-MM-DD' -> { lessons, exercises, runs, assessments, best }
 };
+
+// Per-day activity log. This is a single-learner site with no account, so the
+// only honest record of "did I show up today" is local. Keeping a per-day
+// bucket (rather than just a list of dates) is what makes streaks, the
+// calendar heatmap, and "you did four exercises on Tuesday" possible.
+export function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function bumpDaily(s, field, by = 1) {
+  const d = (s.daily[today()] = s.daily[today()] || {
+    lessons: 0, exercises: 0, runs: 0, assessments: 0, best: 0,
+  });
+  d[field] += by;
+  return d;
+}
+
+/** Called whenever the learner presses Run — the truest signal of activity. */
+export function recordRun(lessonId) {
+  const s = load();
+  bumpDaily(s, 'runs');
+  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  save(s);
+}
+
+/** A practical exercise ticked off inside a lesson. */
+export function recordExercise(exerciseId) {
+  const s = load();
+  s.exercises = s.exercises || [];
+  if (!s.exercises.includes(exerciseId)) {
+    s.exercises.push(exerciseId);
+    bumpDaily(s, 'exercises');
+  }
+  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  awardBadges(s);
+  save(s);
+  return s;
+}
+
+export function isExerciseDone(exerciseId) {
+  return (load().exercises || []).includes(exerciseId);
+}
+
+/** Consecutive days up to and including today (or yesterday, so a day in
+ *  progress doesn't look like a broken streak). */
+export function currentStreak() {
+  const days = new Set(load().activeDays);
+  let streak = 0;
+  const d = new Date();
+  if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1);
+  while (days.has(d.toISOString().slice(0, 10))) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+export function longestStreak() {
+  const days = [...new Set(load().activeDays)].sort();
+  let best = 0, run = 0, prev = null;
+  for (const day of days) {
+    const cur = new Date(day);
+    run = prev && (cur - prev) / 86400000 === 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = cur;
+  }
+  return best;
+}
+
+/** Last `days` days, oldest first — for the calendar heatmap. */
+export function dailyHistory(days = 35) {
+  const s = load();
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const rec = s.daily[key];
+    const activity = rec ? rec.lessons * 3 + rec.exercises * 2 + rec.assessments * 2 + Math.min(rec.runs, 6) : 0;
+    out.push({ date: key, activity, ...(rec || { lessons: 0, exercises: 0, runs: 0, assessments: 0 }) });
+  }
+  return out;
+}
 
 const MAX_ASSESSMENT_HISTORY = 50;
 
@@ -30,9 +114,7 @@ function save(state) {
   window.dispatchEvent(new CustomEvent('lr-progress', { detail: state }));
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
+
 
 export function completeLesson(slug) {
   const s = load();

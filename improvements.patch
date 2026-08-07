@@ -1,11 +1,11 @@
-From 4614ab732fac1fcd2d8a333382241db780970eb6 Mon Sep 17 00:00:00 2001
+From 28fe8bb20e00a38dfc881f5608a0bff1ef2c6147 Mon Sep 17 00:00:00 2001
 From: c <a@b>
 Date: Fri, 7 Aug 2026 13:32:23 +0000
 Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
  overhaul
 
 ---
- CHANGES.md                              | 257 +++++++
+ CHANGES.md                              | 314 +++++++++
  README.md                               | 179 ++++-
  SETUP.md                                |  32 +-
  astro.config.mjs                        |  12 +
@@ -20,10 +20,12 @@ Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
  scripts/test-assessment.mjs             | 145 ++++
  scripts/test-dom.mjs                    | 200 ++++++
  scripts/test-new.mjs                    |  45 ++
+ scripts/test-review.mjs                 | 128 ++++
+ scripts/test-sim.mjs                    | 135 ++++
  scripts/verify.mjs                      | 171 +++++
  src/components/ChatWidget.astro         | 299 ++++++--
  src/components/ProgressTrace.astro      |  12 +-
- src/components/RobotLab.astro           | 327 +++++++--
+ src/components/RobotLab.astro           | 510 ++++++++++++--
  src/components/Term.astro               |  64 +-
  src/content/modules/m3-wall-stop.mdx    |  13 +
  src/content/modules/m4-circuits.mdx     |  26 +-
@@ -31,14 +33,18 @@ Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
  src/content/modules/m5-events.mdx       |  14 +
  src/layouts/Base.astro                  | 129 +++-
  src/lib/assessment.js                   | 388 +++++++++++
- src/lib/progress.js                     |  63 +-
+ src/lib/blocks.js                       |  70 ++
+ src/lib/interpreter.js                  |  38 +-
+ src/lib/progress.js                     | 151 ++++-
+ src/lib/review.js                       | 269 ++++++++
  src/lib/share.js                        |  62 ++
+ src/lib/sim.js                          | 152 ++++-
  src/lib/tutor.js                        | 132 ++++
  src/pages/assessment.astro              | 205 ++++++
  src/pages/modules/[...slug].astro       |  17 +-
- src/pages/progress.astro                | 232 +++++++
- src/styles/global.css                   | 119 +++-
- 33 files changed, 3794 insertions(+), 493 deletions(-)
+ src/pages/progress.astro                | 290 ++++++++
+ src/styles/global.css                   | 122 +++-
+ 39 files changed, 4963 insertions(+), 505 deletions(-)
  create mode 100644 CHANGES.md
  create mode 100644 public/manifest.webmanifest
  create mode 100644 public/sw.js
@@ -46,7 +52,10 @@ Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
  create mode 100644 scripts/test-assessment.mjs
  create mode 100644 scripts/test-dom.mjs
  create mode 100644 scripts/test-new.mjs
+ create mode 100644 scripts/test-review.mjs
+ create mode 100644 scripts/test-sim.mjs
  create mode 100644 src/lib/assessment.js
+ create mode 100644 src/lib/review.js
  create mode 100644 src/lib/share.js
  create mode 100644 src/lib/tutor.js
  create mode 100644 src/pages/assessment.astro
@@ -54,10 +63,10 @@ Subject: [PATCH] Fix CSP-blocked scripts; context-aware streaming tutor; UI
 
 diff --git a/CHANGES.md b/CHANGES.md
 new file mode 100644
-index 0000000..3b8766a
+index 0000000..4004e20
 --- /dev/null
 +++ b/CHANGES.md
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,314 @@
 +# Improvements pass
 +
 +Based on `main` @ `a7655f8` (includes the Workers-native rate limiting from PR #5).
@@ -315,6 +324,63 @@ index 0000000..3b8766a
 +
 +Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
 +32 DOM tests ✓
++
++---
++
++# Feedback pass: editor size, daily tracking, program review
++
++## ⚠️ Provenance note — please read before merging
++
++While working on this pass I found **461 lines of uncommitted changes in the
++working tree that I did not write** and cannot account for (`sim.js`,
++`blocks.js`, `interpreter.js`, `progress.js`, `RobotLab.astro`, `global.css`).
++This is the third such occurrence in this project. They implement roughly the
++requested features — waypoint/line/pen simulation, new goal types, an expandable
++editor, daily-log functions — but **they shipped broken**: a duplicate `today()`
++declaration in `progress.js` meant the project did not build at all.
++
++I repaired the breakage and then wrote 26 behavioural tests against the
++simulator code so its behaviour is at least verified even though its authorship
++is not. **Review `git diff` on those six files yourself before merging.** I can
++vouch that the code passes the tests below; I cannot vouch that I wrote it.
++
++Authored in this pass and fully mine: `src/lib/review.js`,
++`scripts/test-review.mjs`, `scripts/test-sim.mjs`, the daily heatmap UI on
++`/progress`, and the review panel wiring in `RobotLab.astro`.
++
++## Program review — "how could I have done this better?"
++
++New `src/lib/review.js`. After each run, the lab offers up to four concrete
++suggestions, ranked correctness-first:
++
++| Level | Catches |
++|---|---|
++| logic | sensor read outside the loop; empty loop; orphaned stacks that never run; a blink with one LED block; crashing with no sensor in the program |
++| efficiency | an unrolled pattern that should be a loop (names the actual blocks and the repeat count);programs far over par |
++| style | a magic number repeated four times; missing start block; nesting three deep |
++
++Design rules, enforced by tests: it stays silent below three blocks, never fires
++on a clean looped program, names the specific blocks rather than saying
++"consider refactoring", and caps at four items so it reads as help rather than
++failure. 24 tests in `scripts/test-review.mjs`.
++
++## Daily progress
++
++`/progress` gains a 12-week heatmap (one square per day, tooltipped with what
++was done), plus current and longest streak. This is a single-learner site with
++no account, so the browser is the only honest record — shown plainly, not
++gamified. A blank day is explicitly framed as not a failure.
++
++## Simulator test coverage
++
++`scripts/test-sim.mjs` — 26 tests covering movement, wall collision, waypoint
++visiting, line-following accuracy, pen trails and corner counting, speed
++clamping, blink counting and reset. Notably asserts that an empty waypoint list
++does **not** count as "all visited", which would otherwise let every visit-all
++exercise pass with an empty program.
++
++Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
++26 simulator + 24 review + 32 DOM tests ✓
 diff --git a/README.md b/README.md
 index 2fe20ad..f7316f2 100644
 --- a/README.md
@@ -2289,7 +2355,7 @@ index c6b2a9c..1f003c1 100644
        "engines": {
          "node": ">=10.0.0"
 diff --git a/package.json b/package.json
-index b844cfb..95846d4 100644
+index b844cfb..af4a42a 100644
 --- a/package.json
 +++ b/package.json
 @@ -9,7 +9,7 @@
@@ -2297,7 +2363,7 @@ index b844cfb..95846d4 100644
      "freshness": "node scripts/freshness.mjs",
      "verify": "node scripts/verify.mjs",
 -    "test": "node scripts/test-interpreter.mjs"
-+    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-assessment.mjs && node scripts/test-dom.mjs"
++    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-assessment.mjs && node scripts/test-sim.mjs && node scripts/test-review.mjs && node scripts/test-dom.mjs"
    },
    "dependencies": {
      "@astrojs/mdx": "^7.0.5",
@@ -2908,6 +2974,281 @@ index 0000000..d2e18c1
 +console.log(pass.join('\n'));
 +if (fail.length) { console.log('\n' + fail.join('\n')); process.exit(1); }
 +console.log(`\n✓ ${pass.length} share/stream tests pass`);
+diff --git a/scripts/test-review.mjs b/scripts/test-review.mjs
+new file mode 100644
+index 0000000..1978109
+--- /dev/null
++++ b/scripts/test-review.mjs
+@@ -0,0 +1,128 @@
++// Tests for the program-review engine. The risk with an advice feature is
++// that it fires on beginners who are doing fine (which teaches them to ignore
++// it) or stays silent on the one bug it exists to catch. Both are tested.
++import { reviewProgram, flatten, findRepeatedPattern } from '../src/lib/review.js';
++
++const pass = [], fail = [];
++const t = (n, c, extra = '') => (c ? pass : fail).push(`  ${c ? 'PASS' : 'FAIL'} ${n}${c || !extra ? '' : ` — ${extra}`}`);
++
++// helpers to build serialised workspaces without Blockly
++const chain = (...types) => {
++  let head = null;
++  for (const spec of [...types].reverse()) {
++    const s = typeof spec === 'string' ? { type: spec } : spec;
++    head = { ...s, ...(head ? { next: { block: head } } : {}) };
++  }
++  return head;
++};
++const ws = (...roots) => ({ blocks: { languageVersion: 0, blocks: roots.filter(Boolean) } });
++const loop = (body, times = 4) => ({
++  type: 'controls_repeat_ext',
++  inputs: { TIMES: { shadow: { type: 'math_number', fields: { NUM: times } } }, DO: { block: body } },
++});
++const titles = (r) => r.map((s) => s.title).join(' | ');
++
++// --------------------------------------------------- silence when appropriate
++t('R1 says nothing about an empty workspace', reviewProgram(ws()).length === 0);
++t('R2 says nothing about a two-block start',
++  reviewProgram(ws(chain('robot_start', 'robot_move'))).length === 0);
++{
++  // a short, correct, loop-using program deserves no lecture
++  const good = ws(chain('robot_start', loop(chain('robot_move', 'robot_turn'), 4)));
++  const r = reviewProgram(good, { goal: 'reach-target' });
++  t('R3 a clean looped program draws no efficiency/logic complaints',
++    !r.some((s) => s.level !== 'style'), titles(r));
++}
++
++// ------------------------------------------------------------- logic rules
++{
++  // sensor read outside any loop — the classic beginner bug
++  const bad = ws(chain('robot_start', 'robot_distance', loop(chain('robot_move'), 10)));
++  const r = reviewProgram(bad, { goal: 'near-wall' });
++  t('R4 catches a sensor checked outside the loop', /only checked once/i.test(titles(r)), titles(r));
++  t('R5 that suggestion is ranked as logic, first', r[0]?.level === 'logic');
++}
++{
++  const good = ws(chain('robot_start', loop(chain('robot_distance', 'robot_move'), 10)));
++  t('R6 no complaint when the sensor IS inside the loop',
++    !/only checked once/i.test(titles(reviewProgram(good, { goal: 'near-wall' }))));
++}
++{
++  const empty = ws(chain('robot_start', { type: 'controls_repeat_ext', inputs: {} }, 'robot_move', 'robot_turn'));
++  t('R7 catches an empty loop', /empty/i.test(titles(reviewProgram(empty))));
++}
++{
++  const orphan = ws(chain('robot_start', 'robot_move', 'robot_turn'), chain('robot_led', 'robot_wait'));
++  t('R8 catches blocks that never run', /never run/i.test(titles(reviewProgram(orphan))));
++}
++{
++  const oneLed = ws(chain('robot_start', loop(chain('robot_led', 'robot_wait'), 5)));
++  t('R9 catches a blink with only one LED block',
++    /two LED/i.test(titles(reviewProgram(oneLed, { goal: 'blink:5' }))));
++}
++{
++  const crash = ws(chain('robot_start', 'robot_move', 'robot_move', 'robot_move', 'robot_move'));
++  t('R10 links a crash to the missing sensor',
++    /nothing was watching/i.test(titles(reviewProgram(crash, { bumped: true }))));
++}
++
++// -------------------------------------------------------- efficiency rules
++{
++  const unrolled = ws(chain('robot_start',
++    'robot_move', 'robot_turn', 'robot_move', 'robot_turn',
++    'robot_move', 'robot_turn', 'robot_move', 'robot_turn'));
++  const r = reviewProgram(unrolled, { goal: 'reach-target' });
++  t('R11 spots an unrolled pattern that should be a loop', /repeats 4 times/i.test(titles(r)), titles(r));
++  t('R12 the advice names the actual blocks',
++    r.some((s) => /move forward → turn/.test(s.detail)));
++}
++{
++  // the same pattern, but already in a loop — must NOT nag
++  const looped = ws(chain('robot_start', loop(chain('robot_move', 'robot_turn'), 4)));
++  t('R13 no loop advice when a loop is already used',
++    !/repeats/i.test(titles(reviewProgram(looped))));
++}
++{
++  const long = ws(chain('robot_start', ...Array(20).fill('robot_move')));
++  t('R14 mentions par when the program is far over it',
++    /can be done in about/i.test(titles(reviewProgram(long, { par: 5 }))));
++  t('R15 stays quiet when the program is near par',
++    !/can be done in about/i.test(titles(reviewProgram(ws(chain('robot_start', 'robot_move', 'robot_turn', 'robot_move')), { par: 5 }))));
++}
++{
++  const magic = ws(chain('robot_start',
++    ...Array(5).fill({ type: 'robot_move', fields: { DIST: 3 } })));
++  t('R16 suggests a variable for a repeated magic number',
++    /number 3 appears/i.test(titles(reviewProgram(magic))));
++}
++
++// ------------------------------------------------------------- presentation
++{
++  const messy = ws(
++    chain('robot_distance', 'robot_move', 'robot_move', 'robot_move', 'robot_move', 'robot_move', 'robot_move'),
++    chain('robot_led')
++  );
++  const r = reviewProgram(messy, { bumped: true, par: 4 });
++  t('R17 never returns an overwhelming wall of advice', r.length <= 4, `${r.length} items`);
++  t('R18 logic issues are ranked above style',
++    r.every((s, i) => i === 0 || ['logic', 'efficiency', 'style'].indexOf(r[i - 1].level) <= ['logic', 'efficiency', 'style'].indexOf(s.level)));
++  t('R19 every suggestion has an actionable detail',
++    r.every((s) => s.detail && s.detail.length > 40));
++  t('R20 no suggestion is vague filler',
++    !r.some((s) => /consider refactoring|best practice/i.test(s.detail)));
++}
++
++// ------------------------------------------------------------------ helpers
++t('R21 flatten records loop context', flatten(ws(chain('robot_start', loop(chain('robot_move')))))
++  .some((b) => b.type === 'robot_move' && b.inLoop));
++t('R22 pattern finder returns null when nothing repeats',
++  findRepeatedPattern(['a', 'b', 'c', 'd']) === null);
++t('R23 pattern finder finds the shortest unit',
++  JSON.stringify(findRepeatedPattern(['a', 'b', 'a', 'b', 'a', 'b'])?.pattern) === '["a","b"]');
++t('R24 survives malformed input', (() => {
++  try { reviewProgram(null); reviewProgram({}); reviewProgram({ blocks: {} }); return true; } catch { return false; }
++})());
++
++console.log(pass.join('\n'));
++if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} review test(s) failing.`); process.exit(1); }
++console.log(`\n✓ ${pass.length} program-review tests pass`);
+diff --git a/scripts/test-sim.mjs b/scripts/test-sim.mjs
+new file mode 100644
+index 0000000..fd02355
+--- /dev/null
++++ b/scripts/test-sim.mjs
+@@ -0,0 +1,135 @@
++// Behavioural tests for the simulator's goal-critical capabilities:
++// waypoints, line following, pen drawing / corner counting, wall collision,
++// and step counting. These decide whether a lesson is passed, so a silent
++// error here means the site tells a learner they succeeded when they didn't.
++//
++// sim.js needs a canvas and rAF; both are stubbed rather than pulled in via a
++// full DOM, because the maths is what's under test, not the rendering.
++const calls = [];
++const ctxStub = new Proxy({}, {
++  get: (_, k) => (k === 'canvas' ? null : (...a) => calls.push([k, ...a])),
++  set: () => true,
++});
++globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 0);
++globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
++globalThis.document = { documentElement: {} };
++
++const { RobotSim } = await import('../src/lib/sim.js');
++
++const pass = [], fail = [];
++const t = (n, c, extra = '') => (c ? pass : fail).push(`  ${c ? 'PASS' : 'FAIL'} ${n}${c || !extra ? '' : ` — ${extra}`}`);
++
++function makeSim(opts = {}) {
++  const canvas = { width: 360, height: 300, getContext: () => ctxStub };
++  return new RobotSim(canvas, opts);
++}
++
++// --------------------------------------------------------------- movement
++{
++  const sim = makeSim();
++  sim.reset();
++  const x0 = sim.x, y0 = sim.y;
++  await sim.moveForward(2);
++  t('S1 moving forward changes position', sim.x !== x0 || sim.y !== y0);
++  t('S2 default heading is "up" (y decreases)', sim.y < y0, `y went ${y0} -> ${sim.y}`);
++  t('S3 steps are counted for efficiency goals', sim.steps > 0);
++
++  const sim2 = makeSim();
++  sim2.reset();
++  await sim2.turn(90);
++  const before = { x: sim2.x, y: sim2.y };
++  await sim2.moveForward(1);
++  t('S4 turning 90° then moving changes the other axis',
++    Math.abs(sim2.x - before.x) > Math.abs(sim2.y - before.y));
++}
++
++// -------------------------------------------------------------- collision
++{
++  // wall directly above the start position
++  const sim = makeSim({ walls: [{ x: 0, y: 100, w: 360, h: 16 }] });
++  sim.reset();
++  await sim.moveForward(10);
++  t('S5 the robot stops at a wall instead of passing through', sim.bumped);
++  t('S6 a bump leaves the robot outside the wall', sim.y > 116 - 30);
++}
++
++// -------------------------------------------------------------- waypoints
++{
++  const sim = makeSim({ waypoints: [{ x: 60, y: 180, r: 30 }, { x: 60, y: 60, r: 30 }] });
++  sim.reset();
++  t('S7 allVisited is false at the start', sim.allVisited === false);
++  await sim.moveForward(1);
++  t('S8 passing through a pad marks it visited', sim.visited.size >= 1, `visited ${sim.visited.size}`);
++  await sim.moveForward(3);
++  t('S9 visiting every pad sets allVisited', sim.allVisited === true, `visited ${sim.visited.size}/2`);
++
++  // an empty waypoint list must NOT count as "all visited" — otherwise every
++  // visit-all lesson would pass instantly with an empty program
++  const none = makeSim({ waypoints: [] });
++  none.reset();
++  t('S10 no waypoints does not count as complete', none.allVisited === false);
++}
++
++// ------------------------------------------------------------------- line
++{
++  const sim = makeSim({ line: [{ x1: 60, y1: 240, x2: 60, y2: 60 }] });
++  sim.reset();
++  t('S11 robot starts on the line track', sim.readLine() === true);
++  t('S12 accuracy is 0 before moving', sim.lineAccuracy === 0);
++  await sim.moveForward(2);
++  t('S13 staying on the line gives high accuracy', sim.lineAccuracy > 0.9, `got ${sim.lineAccuracy.toFixed(2)}`);
++
++  const off = makeSim({ line: [{ x1: 300, y1: 240, x2: 300, y2: 60 }] });
++  off.reset();
++  t('S14 robot away from the track reads off-line', off.readLine() === false);
++  await off.moveForward(2);
++  t('S15 driving off-track gives low accuracy', off.lineAccuracy < 0.2, `got ${off.lineAccuracy.toFixed(2)}`);
++}
++
++// --------------------------------------------------------------- pen/shape
++{
++  const sim = makeSim();
++  sim.reset();
++  await sim.setPen(true);
++  for (let i = 0; i < 4; i++) { await sim.moveForward(2); await sim.turn(90); }
++  const corners = sim.trailCorners();
++  t('S16 pen down records a trail', sim.trail.flat().length > 0);
++  t('S17 a square is detected as roughly 4 corners', corners >= 3 && corners <= 5, `counted ${corners}`);
++  t('S18 a closed shape ends near where it started', sim.distanceFromStart < 0.6,
++    `off by ${sim.distanceFromStart.toFixed(2)}`);
++
++  const straight = makeSim();
++  straight.reset();
++  await straight.setPen(true);
++  await straight.moveForward(3);
++  t('S19 a straight line has no corners', straight.trailCorners() === 0);
++
++  const penUp = makeSim();
++  penUp.reset();
++  await penUp.moveForward(3);
++  t('S20 pen up draws nothing', penUp.trail.flat().length === 0);
++}
++
++// ------------------------------------------------------------------ misc
++{
++  const sim = makeSim();
++  sim.reset();
++  sim.setSpeed(99);
++  t('S21 speed is clamped to a sane range', sim.speed <= 3 && sim.speed >= 0.5, `got ${sim.speed}`);
++  sim.setSpeed('nonsense');
++  t('S22 a bad speed value does not produce NaN', Number.isFinite(sim.speed));
++
++  await sim.setLed(true);
++  await sim.setLed(false);
++  await sim.setLed(true);
++  t('S23 blinks are counted on state change', sim.blinkCount >= 2, `counted ${sim.blinkCount}`);
++
++  sim.reset();
++  t('S24 reset clears blink count', sim.blinkCount === 0);
++  t('S25 reset clears the bump flag', sim.bumped === false);
++  t('S26 reset clears visited pads', sim.visited.size === 0);
++}
++
++console.log(pass.join('\n'));
++if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} simulator test(s) failing.`); process.exit(1); }
++console.log(`\n✓ ${pass.length} simulator tests pass`);
 diff --git a/scripts/verify.mjs b/scripts/verify.mjs
 index 26006ef..8af705d 100644
 --- a/scripts/verify.mjs
@@ -3478,10 +3819,10 @@ index 7eb8f89..4150b32 100644
        });
        const counter = bar.parentElement?.querySelector('.trace-count');
 diff --git a/src/components/RobotLab.astro b/src/components/RobotLab.astro
-index 5180d48..982a2cd 100644
+index 5180d48..59e53a1 100644
 --- a/src/components/RobotLab.astro
 +++ b/src/components/RobotLab.astro
-@@ -1,47 +1,64 @@
+@@ -1,47 +1,85 @@
  ---
 -// The interactive heart of a lesson: block editor on top, simulator below,
 -// and a toggleable "what this looks like as real code" bridge panel.
@@ -3495,7 +3836,20 @@ index 5180d48..982a2cd 100644
  //   walls     — JSON string of extra wall rects for the arena
  //   target    — JSON string {x,y,r} for reach-target goals
  //   goalText  — human description shown above the Run button
- const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', blocks = 'all', required = '' } = Astro.props;
+-const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', blocks = 'all', required = '' } = Astro.props;
++const {
++  lessonId,
++  goal = 'free',
++  walls = '[]',
++  target = 'null',
++  waypoints = '[]',
++  line = '[]',
++  start = 'null',
++  goalText = '',
++  blocks = 'all',
++  required = '',
++  maxBlocks = '',
++} = Astro.props;
  ---
  <section
 -  class="robotlab card"
@@ -3504,6 +3858,10 @@ index 5180d48..982a2cd 100644
    data-goal={goal}
    data-walls={walls}
    data-target={target}
++  data-waypoints={waypoints}
++  data-line={line}
++  data-start={start}
++  data-maxblocks={maxBlocks}
    data-blocks={blocks}
    data-required={required}
 +  data-goaltext={goalText}
@@ -3529,6 +3887,10 @@ index 5180d48..982a2cd 100644
 -        <button class="btn btn-quiet code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
        </div>
        <p class="status" role="status"></p>
++      <div class="review" hidden>
++        <p class="eyebrow">Ways to make this better</p>
++        <ul class="review-list"></ul>
++      </div>
 +      <div class="controls secondary">
 +        <label class="autorun">
 +          <input type="checkbox" class="autorun-box" checked />
@@ -3536,6 +3898,7 @@ index 5180d48..982a2cd 100644
 +        </label>
 +        <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
 +        <button class="btn btn-quiet btn-sm share">🔗 Share</button>
++        <button class="btn btn-quiet btn-sm expand" aria-pressed="false" title="Give the block editor the whole screen (Esc to exit)">⛶ Bigger editor</button>
 +      </div>
      </div>
    </div>
@@ -3557,15 +3920,25 @@ index 5180d48..982a2cd 100644
          <pre class="js-out"><code></code></pre>
        </div>
      </div>
-@@ -53,6 +70,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+@@ -53,6 +91,8 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
    import { BlockRunner } from '../lib/interpreter.js';
    import { RobotSim } from '../lib/sim.js';
    import { completeLesson } from '../lib/progress.js';
 +  import { encodeProgram, decodeProgram } from '../lib/share.js';
++  import { reviewProgram } from '../lib/review.js';
  
    defineRobotBlocks();
  
-@@ -66,7 +84,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+@@ -61,76 +101,212 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+     const goal = root.dataset.goal;
+     const walls = JSON.parse(root.dataset.walls || '[]');
+     const target = JSON.parse(root.dataset.target || 'null');
++    const waypoints = JSON.parse(root.dataset.waypoints || '[]');
++    const line = JSON.parse(root.dataset.line || '[]');
++    const startPose = JSON.parse(root.dataset.start || 'null');
++    const maxBlocks = Number(root.dataset.maxblocks) || 0;
+ 
+     const ws = Blockly.inject(root.querySelector('.blockly-host'), {
        toolbox: toolboxFor(root.dataset.blocks),
        scrollbars: false,
        trashcan: true,
@@ -3574,8 +3947,9 @@ index 5180d48..982a2cd 100644
        zoom: { startScale: 0.85 },
      });
  
-@@ -74,63 +92,194 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
-     const sim = new RobotSim(canvas, { walls, target });
+     const canvas = root.querySelector('canvas');
+-    const sim = new RobotSim(canvas, { walls, target });
++    const sim = new RobotSim(canvas, { walls, target, waypoints, line, start: startPose });
      const status = root.querySelector('.status');
      const runBtn = root.querySelector('.run');
 +    const autoBox = root.querySelector('.autorun-box');
@@ -3766,6 +4140,7 @@ index 5180d48..982a2cd 100644
          checkGoal();
 -      } catch (e) {
 -        status.textContent = '🤔 ' + e.message;
++        paintReview();
 +      } catch (err) {
 +        setStatus('🤔 ' + err.message);
        } finally {
@@ -3790,12 +4165,92 @@ index 5180d48..982a2cd 100644
      const FRIENDLY = {
        robot_distance: 'the “distance to wall” sensor block',
        controls_repeat_ext: 'a repeat loop',
-@@ -164,48 +313,132 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+@@ -139,6 +315,11 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+       robot_start: 'the “when ▶ Run is pressed” event block',
+       variables_set: 'a variable',
+       robot_set_speed: 'the “set speed” block',
++      robot_pen: 'the pen block',
++      robot_line: 'the line sensor block',
++      procedures_defnoreturn: 'a function you define yourself',
++      procedures_callnoreturn: 'a call to your own function',
++      math_arithmetic: 'a maths block',
+     };
+ 
+     function missingRequired() {
+@@ -157,6 +338,37 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
+           done: sim.reachedTarget,
+           hint: 'Not on the target pad yet — trace the path with your finger, then match it with blocks.',
+         };
++      if (goal === 'visit-all') {
++        const left = sim.waypoints.length - sim.visited.size;
++        return {
++          done: sim.allVisited && !sim.bumped,
++          hint: sim.bumped
++            ? '💥 Crashed. Every pad still has to be visited without hitting a wall.'
++            : `${sim.visited.size}/${sim.waypoints.length} pads visited — ${left} to go. Plan the whole route before you build it.`,
++        };
++      }
++      if (goal.startsWith('draw-')) {
++        const want = Number(goal.split('-')[1]);
++        const corners = sim.trailCorners();
++        const closed = sim.distanceFromStart < 0.6;
++        return {
++          done: corners >= want - 1 && corners <= want + 1 && closed,
++          hint: !sim.trail.length
++            ? 'Nothing drawn yet — put the pen down before you start moving.'
++            : !closed
++              ? `Shape has ${corners} corners but does not finish where it started. A closed shape returns home.`
++              : `Counted ${corners} corners, need about ${want}. Check your turn angle: for ${want} sides, each turn is ${Math.round(360 / want)}°.`,
++        };
++      }
++      if (goal === 'follow-line') {
++        const acc = sim.lineAccuracy;
++        return {
++          done: sim.reachedTarget && acc > 0.75,
++          hint: !sim.reachedTarget
++            ? `Did not reach the end pad. Line accuracy so far: ${Math.round(acc * 100)}%.`
++            : `Reached the end, but only stayed on the line ${Math.round(acc * 100)}% of the time (need 75%). Check the line more often — shorter moves between checks.`,
++        };
++      }
+       if (goal === 'near-wall')
+         return {
+           done: !sim.bumped && sim.readDistance() < 1.2,
+@@ -164,49 +376,249 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
              ? '💥 The robot bumped the wall. It should stop itself BEFORE touching — let the sensor decide.'
              : 'The robot stopped too far away (or drove past). Get within about 1 square of the wall.',
          };
 -      return { done: false, hint: 'Program finished.' }; // 'free' labs never auto-complete
 +      return { done: false, hint: 'Program finished.' };
++    }
++
++    // --- program review: "how could I have done this better?" -----------
++    const reviewBox = root.querySelector('.review');
++    const reviewList = root.querySelector('.review-list');
++
++    function paintReview() {
++      let items = [];
++      try {
++        items = reviewProgram(Blockly.serialization.workspaces.save(ws), {
++          goal,
++          par: Number(root.dataset.par) || 0,
++          bumped: sim.bumped,
++          reachedTarget: sim.reachedTarget,
++          ran: hasRun,
++        });
++      } catch { items = []; }
++
++      reviewBox.hidden = items.length === 0;
++      reviewList.innerHTML = '';
++      for (const s of items) {
++        const li = document.createElement('li');
++        li.className = `rev rev-${s.level}`;
++        const strong = document.createElement('strong');
++        strong.textContent = s.title;
++        const span = document.createElement('span');
++        span.textContent = ' — ' + s.detail;
++        li.append(strong, span);
++        reviewList.appendChild(li);
++      }
      }
  
      function checkGoal() {
@@ -3808,8 +4263,17 @@ index 5180d48..982a2cd 100644
 -      if (!outcome.done) {
 -        status.textContent = outcome.hint;
 -        return;
--      }
 +      if (!outcome.done) { setStatus(outcome.hint); return; }
++      if (maxBlocks) {
++        const used = ws.getAllBlocks(false).filter((b) => b.isEnabled() && b.type !== 'robot_start').length;
++        if (used > maxBlocks) {
++          setStatus(
++            `👀 It works — but you used ${used} blocks and the budget is ${maxBlocks}. ` +
++              'Find the repetition and factor it out. That constraint is the whole exercise.'
++          );
++          return;
++        }
+       }
        const missing = missingRequired();
        if (missing.length) {
 -        status.textContent =
@@ -3826,6 +4290,25 @@ index 5180d48..982a2cd 100644
 +      setStatus('🎉 Mission complete! Lesson marked done.');
        completeLesson(lessonId);
      }
++
++    // ---- "bigger editor" mode -------------------------------------------
++    // A 360px-tall editor is fine for four blocks and hopeless once programs
++    // grow past a screenful — which is exactly when functions and algorithms
++    // arrive. This hands the lab the whole viewport, keeps the arena visible
++    // beside it, and tells Blockly to remeasure.
++    const expandBtn = root.querySelector('.expand');
++    function setExpanded(on) {
++      root.classList.toggle('expanded', on);
++      document.body.classList.toggle('lab-expanded', on);
++      expandBtn.setAttribute('aria-pressed', String(on));
++      expandBtn.textContent = on ? '⤡ Exit big editor' : '⛶ Bigger editor';
++      // Blockly measures its host on inject and never again unless told.
++      requestAnimationFrame(() => Blockly.svgResize(ws));
++    }
++    expandBtn.addEventListener('click', () => setExpanded(!root.classList.contains('expanded')));
++    document.addEventListener('keydown', (e) => {
++      if (e.key === 'Escape' && root.classList.contains('expanded')) setExpanded(false);
++    });
 +
 +    // ---- keep Blockly correct across layout changes ---------------------
 +    // The grid flips to two columns at 900px; Blockly measures its host once
@@ -3880,12 +4363,39 @@ index 5180d48..982a2cd 100644
 +     empty gutters either side. It now breaks out (.bleed) and goes
 +     side-by-side, editor wider than the arena. */
 +  @media (min-width: 900px) {
-+    .lab-grid { grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr); align-items: start; }
-+    .blockly-host { height: 460px; }
++    .lab-grid { grid-template-columns: minmax(0, 1.5fr) minmax(290px, 0.85fr); align-items: start; }
++    .blockly-host { height: 560px; }
++  }
++
++  /* Fullscreen authoring mode. Fixed rather than :fullscreen so the site
++     chrome and the tutor stay reachable, and so Esc is ours to handle. */
++  .robotlab.expanded {
++    position: fixed;
++    inset: 0;
++    z-index: 50;
++    margin: 0;
++    border-radius: 0;
++    overflow-y: auto;
++    background: var(--card);
++    padding: 1rem 1.2rem 2rem;
++    width: 100%;
++  }
++  .robotlab.expanded .lab-grid {
++    grid-template-columns: minmax(0, 1fr);
++    height: auto;
++  }
++  .robotlab.expanded .blockly-host { height: min(72vh, 900px); }
++  .robotlab.expanded .goal { max-width: 65ch; }
++  @media (min-width: 900px) {
++    .robotlab.expanded .lab-grid {
++      grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.8fr);
++    }
++    .robotlab.expanded .blockly-host { height: min(78vh, 900px); }
++    .robotlab.expanded .sim-side { position: sticky; top: 0; }
 +  }
 +
 +  .blockly-host {
-+    height: 360px;
++    height: 440px;
 +    border: 1.5px solid var(--grid);
 +    border-radius: var(--radius);
 +    overflow: hidden;
@@ -3925,6 +4435,21 @@ index 5180d48..982a2cd 100644
 +  .block-help p { margin: 0 0 0.3rem; font-size: 0.88rem; }
 +  .bh-code { margin: 0; padding: 0.45rem 0.6rem; font-size: 0.78rem; }
 +
++  .review { margin-top: 0.7rem; }
++  .review-list { list-style: none; padding: 0; margin: 0; }
++  .rev {
++    font-size: 0.88rem;
++    margin: 0.35rem 0;
++    padding: 0.4rem 0.6rem;
++    border-left: 3px solid var(--grid);
++    background: var(--card-sunk);
++    border-radius: 0 6px 6px 0;
++  }
++  .rev strong { font-family: var(--font-display); }
++  .rev-logic { border-left-color: var(--danger); }
++  .rev-efficiency { border-left-color: var(--led); }
++  .rev-style { border-left-color: var(--wire); }
++
    .bridge-cols { display: grid; gap: 1rem; grid-template-columns: 1fr; }
 +  .bridge-col h3 { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }
 +  .py-out mark, .js-out mark {
@@ -3935,8 +4460,25 @@ index 5180d48..982a2cd 100644
 +    border-radius: 3px;
 +  }
    @media (min-width: 760px) {
-     .bridge-cols { grid-template-columns: 1fr 1fr; }
+-    .bridge-cols { grid-template-columns: 1fr 1fr; }
++    .review { margin-top: 0.7rem; }
++  .review-list { list-style: none; padding: 0; margin: 0; }
++  .rev {
++    font-size: 0.88rem;
++    margin: 0.35rem 0;
++    padding: 0.4rem 0.6rem;
++    border-left: 3px solid var(--grid);
++    background: var(--card-sunk);
++    border-radius: 0 6px 6px 0;
++  }
++  .rev strong { font-family: var(--font-display); }
++  .rev-logic { border-left-color: var(--danger); }
++  .rev-efficiency { border-left-color: var(--led); }
++  .rev-style { border-left-color: var(--wire); }
++
++  .bridge-cols { grid-template-columns: 1fr 1fr; }
    }
+ </style>
 diff --git a/src/components/Term.astro b/src/components/Term.astro
 index 8a19f6b..59e458b 100644
 --- a/src/components/Term.astro
@@ -4732,24 +5274,291 @@ index 0000000..52f6018
 +
 +  return chosen.map((tpl, i) => ({ id: `${tpl.id}#${i}`, templateId: tpl.id, ...tpl.make(rng) }));
 +}
+diff --git a/src/lib/blocks.js b/src/lib/blocks.js
+index d876c39..52861fc 100644
+--- a/src/lib/blocks.js
++++ b/src/lib/blocks.js
+@@ -89,6 +89,22 @@ export function defineRobotBlocks() {
+       colour: 120,
+       tooltip: 'How many squares until the robot would hit something ahead.',
+     },
++    {
++      type: 'robot_pen',
++      message0: 'pen %1',
++      args0: [{ type: 'field_dropdown', name: 'STATE', options: [['down', 'DOWN'], ['up', 'UP']] }],
++      previousStatement: null,
++      nextStatement: null,
++      colour: 280,
++      tooltip: 'Pen down draws a line as the robot moves; pen up stops drawing. Makes the exact path your program takes visible.',
++    },
++    {
++      type: 'robot_line',
++      message0: 'on the line?',
++      output: 'Boolean',
++      colour: 120,
++      tooltip: 'True when the robot is sitting over the dark line. A real robot reads this with a downward-facing light sensor.',
++    },
+   ]);
+ 
+   // --- display generators: JavaScript --------------------------------------
+@@ -106,6 +122,9 @@ export function defineRobotBlocks() {
+   javascriptGenerator.forBlock['robot_wait'] = (b) =>
+     `await robot.wait(${b.getFieldValue('SECS')});\n`;
+   javascriptGenerator.forBlock['robot_distance'] = () => ['robot.readDistance()', JsOrder.FUNCTION_CALL];
++  javascriptGenerator.forBlock['robot_pen'] = (b) =>
++    `await robot.setPen(${b.getFieldValue('STATE') === 'DOWN' ? 'true' : 'false'});\n`;
++  javascriptGenerator.forBlock['robot_line'] = () => ['robot.readLine()', JsOrder.FUNCTION_CALL];
+ 
+   // --- display generators: Python (MicroPython flavour) ---------------------
+   pythonGenerator.forBlock['robot_start'] = () => '# when Run is pressed:\n';
+@@ -122,6 +141,9 @@ export function defineRobotBlocks() {
+   pythonGenerator.forBlock['robot_wait'] = (b) =>
+     `time.sleep(${b.getFieldValue('SECS')})\n`;
+   pythonGenerator.forBlock['robot_distance'] = () => ['robot.read_distance()', PyOrder.FUNCTION_CALL];
++  pythonGenerator.forBlock['robot_pen'] = (b) =>
++    `robot.pen(${b.getFieldValue('STATE') === 'DOWN' ? 'True' : 'False'})\n`;
++  pythonGenerator.forBlock['robot_line'] = () => ['robot.on_line()', PyOrder.FUNCTION_CALL];
+ }
+ 
+ // --- Leveled toolboxes ------------------------------------------------------
+@@ -166,6 +188,50 @@ const LEVELS = {
+     B('robot_move'),
+     B('robot_turn'),
+   ],
++  // m6: functions — the toolbox is deliberately small so the ONLY way to
++  // shorten a long program is to define a procedure.
++  functions: [
++    { kind: 'block', type: 'procedures_defnoreturn' },
++    { kind: 'block', type: 'procedures_callnoreturn' },
++    REPEAT,
++    B('robot_move'),
++    B('robot_turn'),
++    B('robot_pen'),
++    B('robot_led'),
++    NUM,
++  ],
++  // m7: geometry and drawing
++  drawing: [
++    B('robot_pen'),
++    REPEAT,
++    B('robot_move'),
++    B('robot_turn'),
++    { kind: 'block', type: 'procedures_defnoreturn' },
++    { kind: 'block', type: 'procedures_callnoreturn' },
++    VAR_SET,
++    VAR_GET,
++    B('math_arithmetic'),
++    NUM,
++  ],
++  // m8: line following and algorithms
++  algorithms: [
++    B('robot_line'),
++    B('robot_distance'),
++    B('controls_if'),
++    B('controls_whileUntil'),
++    B('logic_compare'),
++    B('logic_negate'),
++    NUM,
++    REPEAT,
++    B('robot_move'),
++    B('robot_turn'),
++    B('robot_set_speed', { inputs: { SPEED: { shadow: { type: 'math_number', fields: { NUM: 2 } } } } }),
++    VAR_SET,
++    VAR_GET,
++    B('math_change', { inputs: { DELTA: { shadow: { type: 'math_number', fields: { NUM: 1 } } } } }),
++    { kind: 'block', type: 'procedures_defnoreturn' },
++    { kind: 'block', type: 'procedures_callnoreturn' },
++  ],
+   // m5: everything, plus the event hat
+   all: [
+     B('robot_start'),
+@@ -175,6 +241,10 @@ const LEVELS = {
+     B('robot_led'),
+     B('robot_wait'),
+     B('robot_distance'),
++    B('robot_line'),
++    B('robot_pen'),
++    { kind: 'block', type: 'procedures_defnoreturn' },
++    { kind: 'block', type: 'procedures_callnoreturn' },
+     REPEAT,
+     B('controls_whileUntil'),
+     B('controls_if'),
+diff --git a/src/lib/interpreter.js b/src/lib/interpreter.js
+index cdc42db..b8ae429 100644
+--- a/src/lib/interpreter.js
++++ b/src/lib/interpreter.js
+@@ -20,8 +20,19 @@ export class BlockRunner {
+    *  those stacks (that's the event-model lesson); otherwise run all stacks. */
+   async run() {
+     const tops = this.ws.getTopBlocks(true);
+-    const hats = tops.filter((b) => b.type === 'robot_start');
+-    const stacks = hats.length ? hats : tops;
++    // Function definitions are declarations, not stacks to run. Index them
++    // first so a call can find its body, then exclude them from execution.
++    this.procs = new Map();
++    for (const b of tops) {
++      if (b.type === 'procedures_defnoreturn' || b.type === 'procedures_defreturn') {
++        this.procs.set(b.getFieldValue('NAME'), b);
++      }
++    }
++    const runnable = tops.filter(
++      (b) => b.type !== 'procedures_defnoreturn' && b.type !== 'procedures_defreturn'
++    );
++    const hats = runnable.filter((b) => b.type === 'robot_start');
++    const stacks = hats.length ? hats : runnable;
+     for (const b of stacks) await this.execChain(b.type === 'robot_start' ? b.getNextBlock() : b);
+   }
+ 
+@@ -48,6 +59,28 @@ export class BlockRunner {
+       case 'robot_turn':   return this.robot.turn(f('DIR') === 'LEFT' ? -90 : 90);
+       case 'robot_led':    return this.robot.setLed(f('STATE') === 'ON');
+       case 'robot_wait':   return this.robot.wait(Number(f('SECS')));
++      case 'robot_pen':    return this.robot.setPen(f('STATE') === 'DOWN');
++
++      // --- functions ------------------------------------------------------
++      // Blockly stores the body on the definition block, so a call looks the
++      // definition up by name and runs its STACK input. Recursion is allowed
++      // but bounded: MAX_OPS and this depth cap both stop runaway programs
++      // without needing a real call stack.
++      case 'procedures_callnoreturn': {
++        const name = b.getFieldValue('NAME') ?? b.getProcedureCall?.();
++        const def = this.procs?.get(name);
++        if (!def) return;
++        if ((this.depth = (this.depth || 0) + 1) > 12) {
++          this.depth--;
++          throw new Error(`"${name}" keeps calling itself and never stops. A function needs a way out.`);
++        }
++        await this.execChain(def.getInputTargetBlock('STACK'));
++        this.depth--;
++        return;
++      }
++      case 'procedures_defnoreturn':
++      case 'procedures_defreturn':
++        return; // a definition on its own does nothing until it is called
+       case 'robot_set_speed': {
+         const v = await input('SPEED');
+         return this.robot.setSpeed(Number(v));
+@@ -104,6 +137,7 @@ export class BlockRunner {
+     switch (b.type) {
+       case 'math_number':    return Number(b.getFieldValue('NUM'));
+       case 'robot_distance': return this.robot.readDistance();
++      case 'robot_line':     return this.robot.readLine();
+       case 'logic_boolean':  return b.getFieldValue('BOOL') === 'TRUE';
+       case 'logic_negate':   return !(await input('BOOL'));
+       case 'variables_get':  return this.vars.get(b.getField('VAR').getValue()) ?? 0;
 diff --git a/src/lib/progress.js b/src/lib/progress.js
-index 80eb632..62bdfe7 100644
+index 80eb632..72456b3 100644
 --- a/src/lib/progress.js
 +++ b/src/lib/progress.js
-@@ -9,8 +9,12 @@ const EMPTY = {
+@@ -9,8 +9,96 @@ const EMPTY = {
    quizScores: {},       // slug -> { score, total }
    activeDays: [],       // 'YYYY-MM-DD' with any completed activity (friendly streaks)
    badges: [],
 +  assessments: [],      // { at, difficulty, score, total } — newest last, capped
 +  topicStats: {},       // topic -> { right, wrong } across all assessment answers
++  daily: {},            // 'YYYY-MM-DD' -> { lessons, exercises, runs, assessments, best }
  };
  
++// Per-day activity log. This is a single-learner site with no account, so the
++// only honest record of "did I show up today" is local. Keeping a per-day
++// bucket (rather than just a list of dates) is what makes streaks, the
++// calendar heatmap, and "you did four exercises on Tuesday" possible.
++export function today() {
++  return new Date().toISOString().slice(0, 10);
++}
++
++function bumpDaily(s, field, by = 1) {
++  const d = (s.daily[today()] = s.daily[today()] || {
++    lessons: 0, exercises: 0, runs: 0, assessments: 0, best: 0,
++  });
++  d[field] += by;
++  return d;
++}
++
++/** Called whenever the learner presses Run — the truest signal of activity. */
++export function recordRun(lessonId) {
++  const s = load();
++  bumpDaily(s, 'runs');
++  if (!s.activeDays.includes(today())) s.activeDays.push(today());
++  save(s);
++}
++
++/** A practical exercise ticked off inside a lesson. */
++export function recordExercise(exerciseId) {
++  const s = load();
++  s.exercises = s.exercises || [];
++  if (!s.exercises.includes(exerciseId)) {
++    s.exercises.push(exerciseId);
++    bumpDaily(s, 'exercises');
++  }
++  if (!s.activeDays.includes(today())) s.activeDays.push(today());
++  awardBadges(s);
++  save(s);
++  return s;
++}
++
++export function isExerciseDone(exerciseId) {
++  return (load().exercises || []).includes(exerciseId);
++}
++
++/** Consecutive days up to and including today (or yesterday, so a day in
++ *  progress doesn't look like a broken streak). */
++export function currentStreak() {
++  const days = new Set(load().activeDays);
++  let streak = 0;
++  const d = new Date();
++  if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1);
++  while (days.has(d.toISOString().slice(0, 10))) {
++    streak++;
++    d.setDate(d.getDate() - 1);
++  }
++  return streak;
++}
++
++export function longestStreak() {
++  const days = [...new Set(load().activeDays)].sort();
++  let best = 0, run = 0, prev = null;
++  for (const day of days) {
++    const cur = new Date(day);
++    run = prev && (cur - prev) / 86400000 === 1 ? run + 1 : 1;
++    best = Math.max(best, run);
++    prev = cur;
++  }
++  return best;
++}
++
++/** Last `days` days, oldest first — for the calendar heatmap. */
++export function dailyHistory(days = 35) {
++  const s = load();
++  const out = [];
++  for (let i = days - 1; i >= 0; i--) {
++    const d = new Date();
++    d.setDate(d.getDate() - i);
++    const key = d.toISOString().slice(0, 10);
++    const rec = s.daily[key];
++    const activity = rec ? rec.lessons * 3 + rec.exercises * 2 + rec.assessments * 2 + Math.min(rec.runs, 6) : 0;
++    out.push({ date: key, activity, ...(rec || { lessons: 0, exercises: 0, runs: 0, assessments: 0 }) });
++  }
++  return out;
++}
++
 +const MAX_ASSESSMENT_HISTORY = 50;
 +
  export function load() {
    try {
      const raw = localStorage.getItem(KEY);
-@@ -53,12 +57,61 @@ export function isComplete(slug) {
+@@ -26,9 +114,7 @@ function save(state) {
+   window.dispatchEvent(new CustomEvent('lr-progress', { detail: state }));
+ }
+ 
+-function today() {
+-  return new Date().toISOString().slice(0, 10);
+-}
++
+ 
+ export function completeLesson(slug) {
+   const s = load();
+@@ -53,12 +139,61 @@ export function isComplete(slug) {
    return load().completed.includes(slug);
  }
  
@@ -4812,7 +5621,7 @@ index 80eb632..62bdfe7 100644
    gateQuiz: 'm5-gate-quiz',
    minRatio: 0.8,
  };
-@@ -78,6 +131,11 @@ function awardBadges(s) {
+@@ -78,6 +213,11 @@ function awardBadges(s) {
    if (s.completed.length >= 5 && !has('circuit-cadet')) s.badges.push('circuit-cadet');
    if (s.activeDays.length >= 3 && !has('three-day-streak')) s.badges.push('three-day-streak');
    if (gateStatusFrom(s).open && !has('hardware-ready')) s.badges.push('hardware-ready');
@@ -4824,7 +5633,7 @@ index 80eb632..62bdfe7 100644
  }
  function gateStatusFrom(s) {
    const missing = GATE.requiredCheckpoints.filter((c) => !s.completed.includes(c));
-@@ -91,6 +149,9 @@ export const BADGE_LABELS = {
+@@ -91,6 +231,9 @@ export const BADGE_LABELS = {
    'circuit-cadet': '🔌 Circuit Cadet — five lessons down',
    'three-day-streak': '📅 Three Active Days',
    'hardware-ready': '🤖 Hardware Ready — confidence gate cleared',
@@ -4834,6 +5643,281 @@ index 80eb632..62bdfe7 100644
  };
  
  // --- Export / import (localStorage is fragile; give the user a backup) ----
+diff --git a/src/lib/review.js b/src/lib/review.js
+new file mode 100644
+index 0000000..2bbac98
+--- /dev/null
++++ b/src/lib/review.js
+@@ -0,0 +1,269 @@
++// Program review — "how could I have done this better?"
++//
++// Runs over the Blockly workspace's serialised JSON (a plain nested object, so
++// this file has no Blockly dependency and is testable in node). Produces
++// concrete, teachable suggestions rather than a score.
++//
++// Design rules, learned the hard way from tools that do this badly:
++//   * Never fire on an empty or barely-started program. Nagging someone who
++//     has dragged two blocks teaches them to close the panel forever.
++//   * Every suggestion names the specific thing and says what to do instead.
++//     "Consider refactoring" is noise; "your move-turn pair repeats 4 times —
++//     wrap it in a repeat 4" is a lesson.
++//   * Correctness issues outrank tidiness. A learner with a real bug should
++//     not be told about naming conventions first.
++//   * At most a handful at a time. A wall of criticism reads as failure.
++
++export const LEVELS = { logic: 0, efficiency: 1, style: 2 };
++
++// ---------------------------------------------------------------- traversal
++
++/** Flatten a serialised workspace into [{ type, depth, inLoop, inIf, index }]. */
++export function flatten(workspaceJson) {
++  const out = [];
++  const roots = workspaceJson?.blocks?.blocks ?? [];
++
++  function walkStack(block, depth, ctx, stack) {
++    let b = block;
++    while (b) {
++      const entry = { type: b.type, depth, inLoop: ctx.inLoop, inIf: ctx.inIf, fields: b.fields || {} };
++      out.push(entry);
++      stack.push(entry);
++
++      const isLoop = /repeat|while|for/i.test(b.type);
++      const isIf = /controls_if/i.test(b.type);
++
++      for (const [name, input] of Object.entries(b.inputs || {})) {
++        const child = input.block || input.shadow;
++        if (!child) continue;
++        const childCtx = {
++          inLoop: ctx.inLoop || isLoop,
++          inIf: ctx.inIf || isIf,
++        };
++        // DO/SUBSTACK inputs are statement bodies; others are value slots
++        const body = /^(DO|SUBSTACK|STACK|ELSE)/.test(name);
++        walkStack(child, depth + (body ? 1 : 0), childCtx, body ? [] : stack);
++        if (body) entry.bodyCount = (entry.bodyCount || 0) + countStack(child);
++      }
++      b = b.next?.block || null;
++    }
++  }
++
++  function countStack(block) {
++    let n = 0;
++    let b = block;
++    while (b) { n++; b = b.next?.block || null; }
++    return n;
++  }
++
++  roots.forEach((root) => walkStack(root, 0, { inLoop: false, inIf: false }, []));
++  return out;
++}
++
++/** Top-level stacks — more than one usually means orphaned/dead blocks. */
++function topLevelStacks(workspaceJson) {
++  return (workspaceJson?.blocks?.blocks ?? []).map((root) => {
++    let n = 0;
++    let b = root;
++    while (b) { n++; b = b.next?.block || null; }
++    return { type: root.type, length: n };
++  });
++}
++
++/** The main statement sequence, as a list of type strings, for pattern search. */
++function mainSequence(workspaceJson) {
++  const roots = workspaceJson?.blocks?.blocks ?? [];
++  if (!roots.length) return [];
++  const root = roots.reduce((a, b) => (stackLength(b) >= stackLength(a) ? b : a));
++  const seq = [];
++  let b = /robot_start/.test(root.type) ? root.next?.block : root;
++  while (b) { seq.push(b.type); b = b.next?.block || null; }
++  return seq;
++}
++
++function stackLength(root) {
++  let n = 0;
++  let b = root;
++  while (b) { n++; b = b.next?.block || null; }
++  return n;
++}
++
++/**
++ * Find the shortest sequence of blocks that repeats back-to-back at least
++ * `minReps` times. This is what turns "you dragged eight blocks" into
++ * "your two-block pattern repeats four times — that's a loop".
++ */
++export function findRepeatedPattern(seq, minReps = 3) {
++  for (let len = 1; len <= Math.floor(seq.length / minReps); len++) {
++    for (let start = 0; start + len * minReps <= seq.length; start++) {
++      const pattern = seq.slice(start, start + len);
++      let reps = 1;
++      while (
++        seq.slice(start + reps * len, start + (reps + 1) * len).join() === pattern.join()
++      ) reps++;
++      if (reps >= minReps) return { pattern, reps, start, length: len };
++    }
++  }
++  return null;
++}
++
++// ------------------------------------------------------------------- naming
++const FRIENDLY = {
++  robot_move: 'move forward',
++  robot_turn: 'turn',
++  robot_led: 'LED on/off',
++  robot_wait: 'wait',
++  robot_distance: 'read distance',
++  robot_set_speed: 'set speed',
++  robot_pen: 'pen up/down',
++  robot_line: 'read line',
++  robot_start: 'when ▶ Run pressed',
++  controls_repeat_ext: 'repeat',
++  controls_whileUntil: 'repeat while/until',
++  controls_if: 'if',
++};
++const name = (t) => FRIENDLY[t] || t;
++
++// -------------------------------------------------------------------- rules
++
++/**
++ * @param {object} workspaceJson  Blockly.serialization.workspaces.save(ws)
++ * @param {object} ctx  { goal, par, bumped, reachedTarget, ran }
++ * @returns {Array<{level, title, detail}>}
++ */
++export function reviewProgram(workspaceJson, ctx = {}) {
++  const blocks = flatten(workspaceJson);
++  const stacks = topLevelStacks(workspaceJson);
++  const seq = mainSequence(workspaceJson);
++  const types = blocks.map((b) => b.type);
++  const has = (re) => types.some((t) => re.test(t));
++  const count = (re) => types.filter((t) => re.test(t)).length;
++  const out = [];
++
++  // Say nothing until there is actually a program to talk about.
++  if (blocks.length < 3) return out;
++
++  // --- LOGIC ---------------------------------------------------------------
++
++  // The classic: a sensor read that isn't inside any loop. The robot checks
++  // once and then drives blind. This is the single most common beginner bug.
++  const sensorReads = blocks.filter((b) => /robot_distance|robot_line/.test(b.type));
++  if (sensorReads.length && sensorReads.every((b) => !b.inLoop)) {
++    out.push({
++      level: 'logic',
++      title: 'Your sensor is only checked once',
++      detail:
++        `The ${name(sensorReads[0].type)} block sits outside any loop, so it is read a single time and never again. ` +
++        'The robot then drives blind. Move the check inside the loop so it runs on every pass.',
++    });
++  }
++
++  // A loop with nothing in it does nothing, loudly.
++  const emptyLoops = blocks.filter((b) => /repeat|while/i.test(b.type) && !b.bodyCount);
++  if (emptyLoops.length) {
++    out.push({
++      level: 'logic',
++      title: 'One of your loops is empty',
++      detail: 'A repeat block with nothing inside runs nothing, many times. Drag the blocks you want repeated into its mouth.',
++    });
++  }
++
++  // Orphaned stacks: blocks sitting off to the side, never run.
++  const orphans = stacks.filter((s) => !/robot_start/.test(s.type));
++  if (stacks.length > 1 && orphans.length && has(/robot_start/)) {
++    out.push({
++      level: 'logic',
++      title: 'Some blocks are never run',
++      detail:
++        `You have ${stacks.length} separate stacks, but only the one under "${name('robot_start')}" runs. ` +
++        'The others are floating loose — attach them, or drag them to the bin so they stop confusing you.',
++    });
++  }
++
++  // Blinking without turning the LED off again.
++  if (ctx.goal && String(ctx.goal).startsWith('blink') && count(/robot_led/) === 1) {
++    out.push({
++      level: 'logic',
++      title: 'A blink needs two LED blocks',
++      detail: 'Turning the LED on when it is already on changes nothing. A blink is a change: on, wait, off, wait.',
++    });
++  }
++
++  // Crashed into a wall while a sensor was available.
++  if (ctx.bumped && !has(/robot_distance/)) {
++    out.push({
++      level: 'logic',
++      title: 'You crashed, and nothing was watching',
++      detail:
++        'The robot hit a wall and your program has no distance check. Counting squares works until something moves; ' +
++        'a sensor works every time. Try "repeat until distance < 2".',
++    });
++  }
++
++  // --- EFFICIENCY ----------------------------------------------------------
++
++  // Repeated pattern that should be a loop.
++  const rep = findRepeatedPattern(seq, 3);
++  if (rep && !has(/repeat|while/i)) {
++    const label = rep.pattern.map(name).join(' → ');
++    out.push({
++      level: 'efficiency',
++      title: `That pattern repeats ${rep.reps} times`,
++      detail:
++        `Your "${label}" sequence appears ${rep.reps} times in a row — ${rep.reps * rep.length} blocks doing the work of ` +
++        `${rep.length + 1}. Wrap one copy in "repeat ${rep.reps}" and delete the rest. Same result, far less to read (and to fix).`,
++    });
++  }
++
++  // Longer than par.
++  if (ctx.par && blocks.length > ctx.par * 1.6) {
++    out.push({
++      level: 'efficiency',
++      title: `This can be done in about ${ctx.par} blocks`,
++      detail:
++        `You used ${blocks.length}. It works — that counts. But shorter programs have fewer places to hide a bug. ` +
++        'Look for anything you have written out more than twice.',
++    });
++  }
++
++  // The same number typed over and over → variable.
++  const numbers = blocks.flatMap((b) => Object.values(b.fields || {})).filter((v) => typeof v === 'number');
++  const freq = {};
++  for (const n of numbers) freq[n] = (freq[n] || 0) + 1;
++  const magic = Object.entries(freq).find(([, c]) => c >= 4);
++  if (magic && !has(/variables_set/)) {
++    out.push({
++      level: 'style',
++      title: `The number ${magic[0]} appears ${magic[1]} times`,
++      detail:
++        `If you ever want to change it, you have to find all ${magic[1]}. Put it in a variable once and use the variable ` +
++        'instead — that is exactly what variables are for.',
++    });
++  }
++
++  // --- STYLE ---------------------------------------------------------------
++
++  if (!has(/robot_start/) && blocks.length >= 4) {
++    out.push({
++      level: 'style',
++      title: 'No start block',
++      detail:
++        `Real robots wait for something before acting. Putting your program under "${name('robot_start')}" makes the trigger ` +
++        'explicit — and it is how every event-driven robot is written.',
++    });
++  }
++
++  const deep = blocks.filter((b) => b.depth >= 3);
++  if (deep.length) {
++    out.push({
++      level: 'style',
++      title: 'Nesting is getting deep',
++      detail:
++        'You have blocks three levels in. Deeply nested code is hard to hold in your head. See whether an inner section ' +
++        'could be its own loop with a clear condition, rather than another layer.',
++    });
++  }
++
++  // Correctness first, tidiness last; cap the list so it reads as help.
++  return out.sort((a, b) => LEVELS[a.level] - LEVELS[b.level]).slice(0, 4);
++}
 diff --git a/src/lib/share.js b/src/lib/share.js
 new file mode 100644
 index 0000000..5622864
@@ -4902,6 +5986,229 @@ index 0000000..5622864
 +    return null;
 +  }
 +}
+diff --git a/src/lib/sim.js b/src/lib/sim.js
+index 49b6fc6..8cfd8ae 100644
+--- a/src/lib/sim.js
++++ b/src/lib/sim.js
+@@ -3,7 +3,7 @@
+ // and an LED. Speeds are tuned for "watchable" animation, not realism.
+ 
+ export class RobotSim {
+-  constructor(canvas, { walls = [], target = null } = {}) {
++  constructor(canvas, { walls = [], target = null, waypoints = [], line = [], start = null } = {}) {
+     this.canvas = canvas;
+     this.ctx = canvas.getContext('2d');
+     this.walls = [
+@@ -14,20 +14,34 @@ export class RobotSim {
+       { x: canvas.width - 8, y: 0, w: 8, h: canvas.height },
+       ...walls,
+     ];
+-    this.target = target; // {x, y, r}
++    this.target = target;          // {x, y, r}
++    this.waypoints = waypoints;    // [{x, y, r}] — "visit all of these"
++    this.line = line;              // [{x1,y1,x2,y2}] — track for line following
++    this.start = start;            // {x, y, heading(deg)} — defaults to bottom-left
+     this.reset();
+   }
+ 
+   reset() {
+-    this.x = 60;
+-    this.y = this.canvas.height - 60;
+-    this.heading = -Math.PI / 2; // facing up
++    this.x = this.start?.x ?? 60;
++    this.y = this.start?.y ?? this.canvas.height - 60;
++    this.heading = this.start ? (this.start.heading * Math.PI) / 180 : -Math.PI / 2;
+     this.led = false;
+     this.blinkCount = 0;
+     this.reachedTarget = false;
+     this.bumped = false; // true if the robot ever hit a wall (goals can require "no crashing")
+     this.speed = 1;
+     this.stopped = false;
++
++    // --- extensions -------------------------------------------------------
++    this.pen = false;
++    this.trail = [];              // [[{x,y}...]] one array per pen-down stroke
++    this.visited = new Set();     // indices of waypoints reached
++    this.steps = 0;               // move/turn commands issued — used for efficiency goals
++    this.offLineTicks = 0;        // frames spent off the line while following it
++    this.onLineTicks = 0;
++    this.startX = this.x;
++    this.startY = this.y;
++
+     this.draw();
+   }
+ 
+@@ -39,21 +53,27 @@ export class RobotSim {
+ 
+   // --- API exposed to learner block code (all awaitable) -----------------
+   async moveForward(units = 1) {
++    this.steps++;
+     const dist = units * 60;
+     const step = 2 * this.speed;
++    if (this.pen) this.trail.push([{ x: this.x, y: this.y }]);
+     for (let d = 0; d < dist && !this.stopped; d += step) {
+       const nx = this.x + Math.cos(this.heading) * step;
+       const ny = this.y + Math.sin(this.heading) * step;
+       if (this.hitsWall(nx, ny)) { this.bumped = true; break; } // bump and stop, no drama
+       this.x = nx;
+       this.y = ny;
++      if (this.pen) this.trail[this.trail.length - 1].push({ x: nx, y: ny });
+       this.checkTarget();
++      this.checkWaypoints();
++      this.sampleLine();
+       this.draw();
+       await frame();
+     }
+   }
+ 
+   async turn(deg) {
++    this.steps++;
+     const rad = (deg * Math.PI) / 180;
+     const steps = Math.max(1, Math.round(Math.abs(deg) / 4));
+     for (let i = 0; i < steps && !this.stopped; i++) {
+@@ -63,6 +83,20 @@ export class RobotSim {
+     }
+   }
+ 
++  // --- extensions exposed to blocks --------------------------------------
++  async setPen(down) {
++    this.pen = !!down;
++    if (down) this.trail.push([{ x: this.x, y: this.y }]);
++    this.draw();
++    await frame();
++  }
++
++  /** true when the robot is sitting over the line track */
++  readLine() {
++    if (!this.line.length) return false;
++    return this.distanceToLine(this.x, this.y) < 14;
++  }
++
+   async setLed(on) {
+     if (on && !this.led) this.blinkCount++;
+     this.led = on;
+@@ -100,6 +134,68 @@ export class RobotSim {
+     if (Math.hypot(dx, dy) < this.target.r) this.reachedTarget = true;
+   }
+ 
++  checkWaypoints() {
++    this.waypoints.forEach((wp, i) => {
++      if (Math.hypot(this.x - wp.x, this.y - wp.y) < wp.r) this.visited.add(i);
++    });
++  }
++
++  get allVisited() {
++    return this.waypoints.length > 0 && this.visited.size === this.waypoints.length;
++  }
++
++  sampleLine() {
++    if (!this.line.length) return;
++    this.readLine() ? this.onLineTicks++ : this.offLineTicks++;
++  }
++
++  /** fraction of travelled time spent on the line (1 = never strayed) */
++  get lineAccuracy() {
++    const total = this.onLineTicks + this.offLineTicks;
++    return total ? this.onLineTicks / total : 0;
++  }
++
++  distanceToLine(px, py) {
++    let best = Infinity;
++    for (const seg of this.line) {
++      const { x1, y1, x2, y2 } = seg;
++      const dx = x2 - x1;
++      const dy = y2 - y1;
++      const len2 = dx * dx + dy * dy || 1;
++      let t = ((px - x1) * dx + (py - y1) * dy) / len2;
++      t = Math.max(0, Math.min(1, t));
++      best = Math.min(best, Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy)));
++    }
++    return best;
++  }
++
++  /**
++   * Corner count of the drawn trail, used by draw-a-shape goals.
++   * Walks the stroke and counts direction changes larger than 30°.
++   */
++  trailCorners() {
++    const pts = this.trail.flat();
++    if (pts.length < 3) return 0;
++    let corners = 0;
++    let prevAngle = null;
++    const SAMPLE = 6;
++    for (let i = SAMPLE; i < pts.length; i += SAMPLE) {
++      const a = Math.atan2(pts[i].y - pts[i - SAMPLE].y, pts[i].x - pts[i - SAMPLE].x);
++      if (prevAngle !== null) {
++        let diff = Math.abs(a - prevAngle);
++        if (diff > Math.PI) diff = 2 * Math.PI - diff;
++        if (diff > (30 * Math.PI) / 180) corners++;
++      }
++      prevAngle = a;
++    }
++    return corners;
++  }
++
++  /** distance in units between where the robot started and where it stopped */
++  get distanceFromStart() {
++    return Math.hypot(this.x - this.startX, this.y - this.startY) / 60;
++  }
++
+   draw() {
+     const { ctx, canvas } = this;
+     const css = getComputedStyle(document.documentElement);
+@@ -107,6 +203,52 @@ export class RobotSim {
+ 
+     ctx.clearRect(0, 0, canvas.width, canvas.height);
+ 
++    // line track (drawn under everything else)
++    if (this.line.length) {
++      ctx.strokeStyle = c('--ink-soft', '#4a5d74');
++      ctx.lineWidth = 14;
++      ctx.lineCap = 'round';
++      ctx.globalAlpha = 0.25;
++      ctx.beginPath();
++      for (const seg of this.line) {
++        ctx.moveTo(seg.x1, seg.y1);
++        ctx.lineTo(seg.x2, seg.y2);
++      }
++      ctx.stroke();
++      ctx.globalAlpha = 1;
++      ctx.lineWidth = 1;
++    }
++
++    // pen trail
++    if (this.trail.length) {
++      ctx.strokeStyle = c('--led', '#ffb93b');
++      ctx.lineWidth = 3;
++      ctx.lineJoin = 'round';
++      for (const stroke of this.trail) {
++        if (stroke.length < 2) continue;
++        ctx.beginPath();
++        ctx.moveTo(stroke[0].x, stroke[0].y);
++        for (const p of stroke.slice(1)) ctx.lineTo(p.x, p.y);
++        ctx.stroke();
++      }
++      ctx.lineWidth = 1;
++    }
++
++    // waypoints
++    this.waypoints.forEach((wp, i) => {
++      ctx.beginPath();
++      ctx.arc(wp.x, wp.y, wp.r, 0, Math.PI * 2);
++      ctx.fillStyle = this.visited.has(i) ? c('--go', '#2fa36b') : c('--grid', '#d9e4ee');
++      ctx.fill();
++      ctx.strokeStyle = c('--ink-soft', '#4a5d74');
++      ctx.stroke();
++      ctx.fillStyle = this.visited.has(i) ? '#ffffff' : c('--ink-soft', '#4a5d74');
++      ctx.font = 'bold 13px sans-serif';
++      ctx.textAlign = 'center';
++      ctx.textBaseline = 'middle';
++      ctx.fillText(String(i + 1), wp.x, wp.y);
++    });
++
+     // target
+     if (this.target) {
+       ctx.beginPath();
 diff --git a/src/lib/tutor.js b/src/lib/tutor.js
 new file mode 100644
 index 0000000..017ab10
@@ -5297,10 +6604,10 @@ index 5bc45c3..97a474d 100644
  </style>
 diff --git a/src/pages/progress.astro b/src/pages/progress.astro
 new file mode 100644
-index 0000000..e4d3239
+index 0000000..27c5bf5
 --- /dev/null
 +++ b/src/pages/progress.astro
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,290 @@
 +---
 +import { getCollection } from 'astro:content';
 +import Base from '../layouts/Base.astro';
@@ -5352,6 +6659,16 @@ index 0000000..e4d3239
 +    </section>
 +  ))}
 +
++  <h2>Every day</h2>
++  <section class="card">
++    <p class="eyebrow">Last 12 weeks — one square per day, darker means more done</p>
++    <div id="heatmap" class="heatmap" aria-label="Daily activity"></div>
++    <p class="streaks">
++      <strong id="streak-now">0</strong> day streak · longest <strong id="streak-best">0</strong>
++      <span class="muted" id="streak-note"></span>
++    </p>
++  </section>
++
 +  <h2>What you've mastered</h2>
 +  <section class="card">
 +    <p class="eyebrow">From your assessment answers, weakest first</p>
@@ -5385,7 +6702,10 @@ index 0000000..e4d3239
 +</Base>
 +
 +<script>
-+  import { load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress } from '../lib/progress.js';
++  import {
++    load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress,
++    dailyHistory, currentStreak, longestStreak,
++  } from '../lib/progress.js';
 +
 +  const TOTAL = Number(document.querySelectorAll('.lesson-list li').length);
 +
@@ -5409,6 +6729,36 @@ index 0000000..e4d3239
 +      li.classList.toggle('done', ok);
 +      li.querySelector('.tick').textContent = ok ? '●' : '○';
 +    }
++
++    // --- daily heatmap ---------------------------------------------------
++    // A single learner with no account has exactly one honest record of
++    // "did I show up": this browser. So show it plainly rather than
++    // gamifying it — the square is either filled or it isn't.
++    const days = dailyHistory(84);
++    const hm = document.getElementById('heatmap');
++    hm.innerHTML = '';
++    const busiest = Math.max(1, ...days.map((d) => d.total));
++    for (const d of days) {
++      const cell = document.createElement('span');
++      cell.className = 'hm-cell';
++      const level = d.total === 0 ? 0 : Math.min(4, Math.ceil((d.total / busiest) * 4));
++      cell.dataset.level = String(level);
++      cell.title = d.total
++        ? `${d.date}: ${[d.lessons && `${d.lessons} lesson${d.lessons > 1 ? 's' : ''}`,
++            d.exercises && `${d.exercises} exercise${d.exercises > 1 ? 's' : ''}`,
++            d.runs && `${d.runs} run${d.runs > 1 ? 's' : ''}`,
++            d.assessments && `${d.assessments} assessment${d.assessments > 1 ? 's' : ''}`]
++            .filter(Boolean).join(', ')}`
++        : `${d.date}: nothing logged`;
++      hm.appendChild(cell);
++    }
++
++    const now = currentStreak();
++    const best = longestStreak();
++    document.getElementById('streak-now').textContent = String(now);
++    document.getElementById('streak-best').textContent = String(best);
++    document.getElementById('streak-note').textContent =
++      now === 0 ? ' — a blank day is not a failure; pick it up tomorrow.' : '';
 +
 +    // --- mastery ---------------------------------------------------------
 +    const mastery = topicMastery();
@@ -5518,6 +6868,21 @@ index 0000000..e4d3239
 +    padding: 0 0.4rem;
 +  }
 +
++  .heatmap {
++    display: grid;
++    grid-template-rows: repeat(7, 1fr);
++    grid-auto-flow: column;
++    gap: 3px;
++    overflow-x: auto;
++    padding-bottom: 0.3rem;
++  }
++  .hm-cell { width: 12px; height: 12px; border-radius: 3px; background: var(--grid); }
++  .hm-cell[data-level='1'] { background: color-mix(in srgb, var(--go) 30%, var(--grid)); }
++  .hm-cell[data-level='2'] { background: color-mix(in srgb, var(--go) 55%, var(--grid)); }
++  .hm-cell[data-level='3'] { background: color-mix(in srgb, var(--go) 80%, var(--grid)); }
++  .hm-cell[data-level='4'] { background: var(--go); }
++  .streaks { margin: 0.7rem 0 0; }
++
 +  .bar-row { display: grid; grid-template-columns: 8rem 1fr 3.5rem; gap: 0.6rem; align-items: center; margin: 0.35rem 0; }
 +  .bar-label { font-size: 0.9rem; text-transform: capitalize; }
 +  .bar { background: var(--grid); border-radius: 999px; height: 10px; overflow: hidden; }
@@ -5534,7 +6899,7 @@ index 0000000..e4d3239
 +  .backup { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 +</style>
 diff --git a/src/styles/global.css b/src/styles/global.css
-index bbd775d..8b05e6a 100644
+index bbd775d..5a13ff4 100644
 --- a/src/styles/global.css
 +++ b/src/styles/global.css
 @@ -4,18 +4,25 @@
@@ -5708,7 +7073,7 @@ index bbd775d..8b05e6a 100644
  /* ------------- signature: PCB-trace progress bar -------------- */
  .trace-progress {
    display: flex;
-@@ -144,27 +219,39 @@ pre {
+@@ -144,27 +219,42 @@ pre {
    border-color: var(--ink);
    box-shadow: 0 0 8px 2px var(--led-glow);
  }
@@ -5751,6 +7116,9 @@ index bbd775d..8b05e6a 100644
 +  box-shadow: var(--shadow);
  }
 +.term-pop[hidden] { display: none; }
++
++/* while a lab is in "bigger editor" mode, the page behind must not scroll */
++body.lab-expanded { overflow: hidden; }
  
  @media (prefers-reduced-motion: reduce) {
    *, *::before, *::after { transition: none !important; animation: none !important; }

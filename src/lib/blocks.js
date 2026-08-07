@@ -89,6 +89,22 @@ export function defineRobotBlocks() {
       colour: 120,
       tooltip: 'How many squares until the robot would hit something ahead.',
     },
+    {
+      type: 'robot_pen',
+      message0: 'pen %1',
+      args0: [{ type: 'field_dropdown', name: 'STATE', options: [['down', 'DOWN'], ['up', 'UP']] }],
+      previousStatement: null,
+      nextStatement: null,
+      colour: 280,
+      tooltip: 'Pen down draws a line as the robot moves; pen up stops drawing. Makes the exact path your program takes visible.',
+    },
+    {
+      type: 'robot_line',
+      message0: 'on the line?',
+      output: 'Boolean',
+      colour: 120,
+      tooltip: 'True when the robot is sitting over the dark line. A real robot reads this with a downward-facing light sensor.',
+    },
   ]);
 
   // --- display generators: JavaScript --------------------------------------
@@ -106,6 +122,9 @@ export function defineRobotBlocks() {
   javascriptGenerator.forBlock['robot_wait'] = (b) =>
     `await robot.wait(${b.getFieldValue('SECS')});\n`;
   javascriptGenerator.forBlock['robot_distance'] = () => ['robot.readDistance()', JsOrder.FUNCTION_CALL];
+  javascriptGenerator.forBlock['robot_pen'] = (b) =>
+    `await robot.setPen(${b.getFieldValue('STATE') === 'DOWN' ? 'true' : 'false'});\n`;
+  javascriptGenerator.forBlock['robot_line'] = () => ['robot.readLine()', JsOrder.FUNCTION_CALL];
 
   // --- display generators: Python (MicroPython flavour) ---------------------
   pythonGenerator.forBlock['robot_start'] = () => '# when Run is pressed:\n';
@@ -122,6 +141,9 @@ export function defineRobotBlocks() {
   pythonGenerator.forBlock['robot_wait'] = (b) =>
     `time.sleep(${b.getFieldValue('SECS')})\n`;
   pythonGenerator.forBlock['robot_distance'] = () => ['robot.read_distance()', PyOrder.FUNCTION_CALL];
+  pythonGenerator.forBlock['robot_pen'] = (b) =>
+    `robot.pen(${b.getFieldValue('STATE') === 'DOWN' ? 'True' : 'False'})\n`;
+  pythonGenerator.forBlock['robot_line'] = () => ['robot.on_line()', PyOrder.FUNCTION_CALL];
 }
 
 // --- Leveled toolboxes ------------------------------------------------------
@@ -166,6 +188,50 @@ const LEVELS = {
     B('robot_move'),
     B('robot_turn'),
   ],
+  // m6: functions — the toolbox is deliberately small so the ONLY way to
+  // shorten a long program is to define a procedure.
+  functions: [
+    { kind: 'block', type: 'procedures_defnoreturn' },
+    { kind: 'block', type: 'procedures_callnoreturn' },
+    REPEAT,
+    B('robot_move'),
+    B('robot_turn'),
+    B('robot_pen'),
+    B('robot_led'),
+    NUM,
+  ],
+  // m7: geometry and drawing
+  drawing: [
+    B('robot_pen'),
+    REPEAT,
+    B('robot_move'),
+    B('robot_turn'),
+    { kind: 'block', type: 'procedures_defnoreturn' },
+    { kind: 'block', type: 'procedures_callnoreturn' },
+    VAR_SET,
+    VAR_GET,
+    B('math_arithmetic'),
+    NUM,
+  ],
+  // m8: line following and algorithms
+  algorithms: [
+    B('robot_line'),
+    B('robot_distance'),
+    B('controls_if'),
+    B('controls_whileUntil'),
+    B('logic_compare'),
+    B('logic_negate'),
+    NUM,
+    REPEAT,
+    B('robot_move'),
+    B('robot_turn'),
+    B('robot_set_speed', { inputs: { SPEED: { shadow: { type: 'math_number', fields: { NUM: 2 } } } } }),
+    VAR_SET,
+    VAR_GET,
+    B('math_change', { inputs: { DELTA: { shadow: { type: 'math_number', fields: { NUM: 1 } } } } }),
+    { kind: 'block', type: 'procedures_defnoreturn' },
+    { kind: 'block', type: 'procedures_callnoreturn' },
+  ],
   // m5: everything, plus the event hat
   all: [
     B('robot_start'),
@@ -175,6 +241,10 @@ const LEVELS = {
     B('robot_led'),
     B('robot_wait'),
     B('robot_distance'),
+    B('robot_line'),
+    B('robot_pen'),
+    { kind: 'block', type: 'procedures_defnoreturn' },
+    { kind: 'block', type: 'procedures_callnoreturn' },
     REPEAT,
     B('controls_whileUntil'),
     B('controls_if'),

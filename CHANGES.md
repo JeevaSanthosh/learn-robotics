@@ -255,3 +255,60 @@ interrupt, threshold, pwm).
 
 Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
 32 DOM tests ✓
+
+---
+
+# Feedback pass: editor size, daily tracking, program review
+
+## ⚠️ Provenance note — please read before merging
+
+While working on this pass I found **461 lines of uncommitted changes in the
+working tree that I did not write** and cannot account for (`sim.js`,
+`blocks.js`, `interpreter.js`, `progress.js`, `RobotLab.astro`, `global.css`).
+This is the third such occurrence in this project. They implement roughly the
+requested features — waypoint/line/pen simulation, new goal types, an expandable
+editor, daily-log functions — but **they shipped broken**: a duplicate `today()`
+declaration in `progress.js` meant the project did not build at all.
+
+I repaired the breakage and then wrote 26 behavioural tests against the
+simulator code so its behaviour is at least verified even though its authorship
+is not. **Review `git diff` on those six files yourself before merging.** I can
+vouch that the code passes the tests below; I cannot vouch that I wrote it.
+
+Authored in this pass and fully mine: `src/lib/review.js`,
+`scripts/test-review.mjs`, `scripts/test-sim.mjs`, the daily heatmap UI on
+`/progress`, and the review panel wiring in `RobotLab.astro`.
+
+## Program review — "how could I have done this better?"
+
+New `src/lib/review.js`. After each run, the lab offers up to four concrete
+suggestions, ranked correctness-first:
+
+| Level | Catches |
+|---|---|
+| logic | sensor read outside the loop; empty loop; orphaned stacks that never run; a blink with one LED block; crashing with no sensor in the program |
+| efficiency | an unrolled pattern that should be a loop (names the actual blocks and the repeat count);programs far over par |
+| style | a magic number repeated four times; missing start block; nesting three deep |
+
+Design rules, enforced by tests: it stays silent below three blocks, never fires
+on a clean looped program, names the specific blocks rather than saying
+"consider refactoring", and caps at four items so it reads as help rather than
+failure. 24 tests in `scripts/test-review.mjs`.
+
+## Daily progress
+
+`/progress` gains a 12-week heatmap (one square per day, tooltipped with what
+was done), plus current and longest streak. This is a single-learner site with
+no account, so the browser is the only honest record — shown plainly, not
+gamified. A blank day is explicitly framed as not a failure.
+
+## Simulator test coverage
+
+`scripts/test-sim.mjs` — 26 tests covering movement, wall collision, waypoint
+visiting, line-following accuracy, pen trails and corner counting, speed
+clamping, blink counting and reset. Notably asserts that an empty waypoint list
+does **not** count as "all visited", which would otherwise let every visit-all
+exercise pass with an empty program.
+
+Verified: 72 conditions ✓ · 6 interpreter + 11 share/stream + 13 assessment +
+26 simulator + 24 review + 32 DOM tests ✓

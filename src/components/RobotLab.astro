@@ -8,7 +8,19 @@
 //   walls     — JSON string of extra wall rects for the arena
 //   target    — JSON string {x,y,r} for reach-target goals
 //   goalText  — human description shown above the Run button
-const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', blocks = 'all', required = '' } = Astro.props;
+const {
+  lessonId,
+  goal = 'free',
+  walls = '[]',
+  target = 'null',
+  waypoints = '[]',
+  line = '[]',
+  start = 'null',
+  goalText = '',
+  blocks = 'all',
+  required = '',
+  maxBlocks = '',
+} = Astro.props;
 ---
 <section
   class="robotlab card card-do bleed"
@@ -16,6 +28,10 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
   data-goal={goal}
   data-walls={walls}
   data-target={target}
+  data-waypoints={waypoints}
+  data-line={line}
+  data-start={start}
+  data-maxblocks={maxBlocks}
   data-blocks={blocks}
   data-required={required}
   data-goaltext={goalText}
@@ -39,6 +55,10 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
         <button class="btn btn-quiet reset">↺ Reset</button>
       </div>
       <p class="status" role="status"></p>
+      <div class="review" hidden>
+        <p class="eyebrow">Ways to make this better</p>
+        <ul class="review-list"></ul>
+      </div>
       <div class="controls secondary">
         <label class="autorun">
           <input type="checkbox" class="autorun-box" checked />
@@ -46,6 +66,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
         </label>
         <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
         <button class="btn btn-quiet btn-sm share">🔗 Share</button>
+        <button class="btn btn-quiet btn-sm expand" aria-pressed="false" title="Give the block editor the whole screen (Esc to exit)">⛶ Bigger editor</button>
       </div>
     </div>
   </div>
@@ -71,6 +92,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
   import { RobotSim } from '../lib/sim.js';
   import { completeLesson } from '../lib/progress.js';
   import { encodeProgram, decodeProgram } from '../lib/share.js';
+  import { reviewProgram } from '../lib/review.js';
 
   defineRobotBlocks();
 
@@ -79,6 +101,10 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
     const goal = root.dataset.goal;
     const walls = JSON.parse(root.dataset.walls || '[]');
     const target = JSON.parse(root.dataset.target || 'null');
+    const waypoints = JSON.parse(root.dataset.waypoints || '[]');
+    const line = JSON.parse(root.dataset.line || '[]');
+    const startPose = JSON.parse(root.dataset.start || 'null');
+    const maxBlocks = Number(root.dataset.maxblocks) || 0;
 
     const ws = Blockly.inject(root.querySelector('.blockly-host'), {
       toolbox: toolboxFor(root.dataset.blocks),
@@ -89,7 +115,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
     });
 
     const canvas = root.querySelector('canvas');
-    const sim = new RobotSim(canvas, { walls, target });
+    const sim = new RobotSim(canvas, { walls, target, waypoints, line, start: startPose });
     const status = root.querySelector('.status');
     const runBtn = root.querySelector('.run');
     const autoBox = root.querySelector('.autorun-box');
@@ -262,6 +288,7 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
         await new BlockRunner(ws, sim).run();
         hasRun = true;
         checkGoal();
+        paintReview();
       } catch (err) {
         setStatus('🤔 ' + err.message);
       } finally {
@@ -288,6 +315,11 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
       robot_start: 'the “when ▶ Run is pressed” event block',
       variables_set: 'a variable',
       robot_set_speed: 'the “set speed” block',
+      robot_pen: 'the pen block',
+      robot_line: 'the line sensor block',
+      procedures_defnoreturn: 'a function you define yourself',
+      procedures_callnoreturn: 'a call to your own function',
+      math_arithmetic: 'a maths block',
     };
 
     function missingRequired() {
@@ -306,6 +338,37 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
           done: sim.reachedTarget,
           hint: 'Not on the target pad yet — trace the path with your finger, then match it with blocks.',
         };
+      if (goal === 'visit-all') {
+        const left = sim.waypoints.length - sim.visited.size;
+        return {
+          done: sim.allVisited && !sim.bumped,
+          hint: sim.bumped
+            ? '💥 Crashed. Every pad still has to be visited without hitting a wall.'
+            : `${sim.visited.size}/${sim.waypoints.length} pads visited — ${left} to go. Plan the whole route before you build it.`,
+        };
+      }
+      if (goal.startsWith('draw-')) {
+        const want = Number(goal.split('-')[1]);
+        const corners = sim.trailCorners();
+        const closed = sim.distanceFromStart < 0.6;
+        return {
+          done: corners >= want - 1 && corners <= want + 1 && closed,
+          hint: !sim.trail.length
+            ? 'Nothing drawn yet — put the pen down before you start moving.'
+            : !closed
+              ? `Shape has ${corners} corners but does not finish where it started. A closed shape returns home.`
+              : `Counted ${corners} corners, need about ${want}. Check your turn angle: for ${want} sides, each turn is ${Math.round(360 / want)}°.`,
+        };
+      }
+      if (goal === 'follow-line') {
+        const acc = sim.lineAccuracy;
+        return {
+          done: sim.reachedTarget && acc > 0.75,
+          hint: !sim.reachedTarget
+            ? `Did not reach the end pad. Line accuracy so far: ${Math.round(acc * 100)}%.`
+            : `Reached the end, but only stayed on the line ${Math.round(acc * 100)}% of the time (need 75%). Check the line more often — shorter moves between checks.`,
+        };
+      }
       if (goal === 'near-wall')
         return {
           done: !sim.bumped && sim.readDistance() < 1.2,
@@ -316,6 +379,36 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
       return { done: false, hint: 'Program finished.' };
     }
 
+    // --- program review: "how could I have done this better?" -----------
+    const reviewBox = root.querySelector('.review');
+    const reviewList = root.querySelector('.review-list');
+
+    function paintReview() {
+      let items = [];
+      try {
+        items = reviewProgram(Blockly.serialization.workspaces.save(ws), {
+          goal,
+          par: Number(root.dataset.par) || 0,
+          bumped: sim.bumped,
+          reachedTarget: sim.reachedTarget,
+          ran: hasRun,
+        });
+      } catch { items = []; }
+
+      reviewBox.hidden = items.length === 0;
+      reviewList.innerHTML = '';
+      for (const s of items) {
+        const li = document.createElement('li');
+        li.className = `rev rev-${s.level}`;
+        const strong = document.createElement('strong');
+        strong.textContent = s.title;
+        const span = document.createElement('span');
+        span.textContent = ' — ' + s.detail;
+        li.append(strong, span);
+        reviewList.appendChild(li);
+      }
+    }
+
     function checkGoal() {
       if (goal === 'free') {
         setStatus('Program finished. Sandbox mode — experiment away!');
@@ -323,6 +416,16 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
       }
       const outcome = outcomeMet();
       if (!outcome.done) { setStatus(outcome.hint); return; }
+      if (maxBlocks) {
+        const used = ws.getAllBlocks(false).filter((b) => b.isEnabled() && b.type !== 'robot_start').length;
+        if (used > maxBlocks) {
+          setStatus(
+            `👀 It works — but you used ${used} blocks and the budget is ${maxBlocks}. ` +
+              'Find the repetition and factor it out. That constraint is the whole exercise.'
+          );
+          return;
+        }
+      }
       const missing = missingRequired();
       if (missing.length) {
         setStatus(
@@ -335,6 +438,25 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
       setStatus('🎉 Mission complete! Lesson marked done.');
       completeLesson(lessonId);
     }
+
+    // ---- "bigger editor" mode -------------------------------------------
+    // A 360px-tall editor is fine for four blocks and hopeless once programs
+    // grow past a screenful — which is exactly when functions and algorithms
+    // arrive. This hands the lab the whole viewport, keeps the arena visible
+    // beside it, and tells Blockly to remeasure.
+    const expandBtn = root.querySelector('.expand');
+    function setExpanded(on) {
+      root.classList.toggle('expanded', on);
+      document.body.classList.toggle('lab-expanded', on);
+      expandBtn.setAttribute('aria-pressed', String(on));
+      expandBtn.textContent = on ? '⤡ Exit big editor' : '⛶ Bigger editor';
+      // Blockly measures its host on inject and never again unless told.
+      requestAnimationFrame(() => Blockly.svgResize(ws));
+    }
+    expandBtn.addEventListener('click', () => setExpanded(!root.classList.contains('expanded')));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.classList.contains('expanded')) setExpanded(false);
+    });
 
     // ---- keep Blockly correct across layout changes ---------------------
     // The grid flips to two columns at 900px; Blockly measures its host once
@@ -387,12 +509,39 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
      empty gutters either side. It now breaks out (.bleed) and goes
      side-by-side, editor wider than the arena. */
   @media (min-width: 900px) {
-    .lab-grid { grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr); align-items: start; }
-    .blockly-host { height: 460px; }
+    .lab-grid { grid-template-columns: minmax(0, 1.5fr) minmax(290px, 0.85fr); align-items: start; }
+    .blockly-host { height: 560px; }
+  }
+
+  /* Fullscreen authoring mode. Fixed rather than :fullscreen so the site
+     chrome and the tutor stay reachable, and so Esc is ours to handle. */
+  .robotlab.expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    margin: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    background: var(--card);
+    padding: 1rem 1.2rem 2rem;
+    width: 100%;
+  }
+  .robotlab.expanded .lab-grid {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .robotlab.expanded .blockly-host { height: min(72vh, 900px); }
+  .robotlab.expanded .goal { max-width: 65ch; }
+  @media (min-width: 900px) {
+    .robotlab.expanded .lab-grid {
+      grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.8fr);
+    }
+    .robotlab.expanded .blockly-host { height: min(78vh, 900px); }
+    .robotlab.expanded .sim-side { position: sticky; top: 0; }
   }
 
   .blockly-host {
-    height: 360px;
+    height: 440px;
     border: 1.5px solid var(--grid);
     border-radius: var(--radius);
     overflow: hidden;
@@ -430,6 +579,21 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
   .block-help p { margin: 0 0 0.3rem; font-size: 0.88rem; }
   .bh-code { margin: 0; padding: 0.45rem 0.6rem; font-size: 0.78rem; }
 
+  .review { margin-top: 0.7rem; }
+  .review-list { list-style: none; padding: 0; margin: 0; }
+  .rev {
+    font-size: 0.88rem;
+    margin: 0.35rem 0;
+    padding: 0.4rem 0.6rem;
+    border-left: 3px solid var(--grid);
+    background: var(--card-sunk);
+    border-radius: 0 6px 6px 0;
+  }
+  .rev strong { font-family: var(--font-display); }
+  .rev-logic { border-left-color: var(--danger); }
+  .rev-efficiency { border-left-color: var(--led); }
+  .rev-style { border-left-color: var(--wire); }
+
   .bridge-cols { display: grid; gap: 1rem; grid-template-columns: 1fr; }
   .bridge-col h3 { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }
   .py-out mark, .js-out mark {
@@ -440,6 +604,21 @@ const { lessonId, goal = 'free', walls = '[]', target = 'null', goalText = '', b
     border-radius: 3px;
   }
   @media (min-width: 760px) {
-    .bridge-cols { grid-template-columns: 1fr 1fr; }
+    .review { margin-top: 0.7rem; }
+  .review-list { list-style: none; padding: 0; margin: 0; }
+  .rev {
+    font-size: 0.88rem;
+    margin: 0.35rem 0;
+    padding: 0.4rem 0.6rem;
+    border-left: 3px solid var(--grid);
+    background: var(--card-sunk);
+    border-radius: 0 6px 6px 0;
+  }
+  .rev strong { font-family: var(--font-display); }
+  .rev-logic { border-left-color: var(--danger); }
+  .rev-efficiency { border-left-color: var(--led); }
+  .rev-style { border-left-color: var(--wire); }
+
+  .bridge-cols { grid-template-columns: 1fr 1fr; }
   }
 </style>
