@@ -49,6 +49,16 @@ const totalLessons = lessons.length;
     </section>
   ))}
 
+  <h2>Every day</h2>
+  <section class="card">
+    <p class="eyebrow">Last 12 weeks — one square per day, darker means more done</p>
+    <div id="heatmap" class="heatmap" aria-label="Daily activity"></div>
+    <p class="streaks">
+      <strong id="streak-now">0</strong> day streak · longest <strong id="streak-best">0</strong>
+      <span class="muted" id="streak-note"></span>
+    </p>
+  </section>
+
   <h2>What you've mastered</h2>
   <section class="card">
     <p class="eyebrow">From your assessment answers, weakest first</p>
@@ -82,7 +92,10 @@ const totalLessons = lessons.length;
 </Base>
 
 <script>
-  import { load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress } from '../lib/progress.js';
+  import {
+    load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress,
+    dailyHistory, currentStreak, longestStreak,
+  } from '../lib/progress.js';
 
   const TOTAL = Number(document.querySelectorAll('.lesson-list li').length);
 
@@ -106,6 +119,36 @@ const totalLessons = lessons.length;
       li.classList.toggle('done', ok);
       li.querySelector('.tick').textContent = ok ? '●' : '○';
     }
+
+    // --- daily heatmap ---------------------------------------------------
+    // A single learner with no account has exactly one honest record of
+    // "did I show up": this browser. So show it plainly rather than
+    // gamifying it — the square is either filled or it isn't.
+    const days = dailyHistory(84);
+    const hm = document.getElementById('heatmap');
+    hm.innerHTML = '';
+    const busiest = Math.max(1, ...days.map((d) => d.total));
+    for (const d of days) {
+      const cell = document.createElement('span');
+      cell.className = 'hm-cell';
+      const level = d.total === 0 ? 0 : Math.min(4, Math.ceil((d.total / busiest) * 4));
+      cell.dataset.level = String(level);
+      cell.title = d.total
+        ? `${d.date}: ${[d.lessons && `${d.lessons} lesson${d.lessons > 1 ? 's' : ''}`,
+            d.exercises && `${d.exercises} exercise${d.exercises > 1 ? 's' : ''}`,
+            d.runs && `${d.runs} run${d.runs > 1 ? 's' : ''}`,
+            d.assessments && `${d.assessments} assessment${d.assessments > 1 ? 's' : ''}`]
+            .filter(Boolean).join(', ')}`
+        : `${d.date}: nothing logged`;
+      hm.appendChild(cell);
+    }
+
+    const now = currentStreak();
+    const best = longestStreak();
+    document.getElementById('streak-now').textContent = String(now);
+    document.getElementById('streak-best').textContent = String(best);
+    document.getElementById('streak-note').textContent =
+      now === 0 ? ' — a blank day is not a failure; pick it up tomorrow.' : '';
 
     // --- mastery ---------------------------------------------------------
     const mastery = topicMastery();
@@ -214,6 +257,21 @@ const totalLessons = lessons.length;
     border-radius: 999px;
     padding: 0 0.4rem;
   }
+
+  .heatmap {
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    grid-auto-flow: column;
+    gap: 3px;
+    overflow-x: auto;
+    padding-bottom: 0.3rem;
+  }
+  .hm-cell { width: 12px; height: 12px; border-radius: 3px; background: var(--grid); }
+  .hm-cell[data-level='1'] { background: color-mix(in srgb, var(--go) 30%, var(--grid)); }
+  .hm-cell[data-level='2'] { background: color-mix(in srgb, var(--go) 55%, var(--grid)); }
+  .hm-cell[data-level='3'] { background: color-mix(in srgb, var(--go) 80%, var(--grid)); }
+  .hm-cell[data-level='4'] { background: var(--go); }
+  .streaks { margin: 0.7rem 0 0; }
 
   .bar-row { display: grid; grid-template-columns: 8rem 1fr 3.5rem; gap: 0.6rem; align-items: center; margin: 0.35rem 0; }
   .bar-label { font-size: 0.9rem; text-transform: capitalize; }

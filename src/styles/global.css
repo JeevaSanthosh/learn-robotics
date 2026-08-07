@@ -253,6 +253,9 @@ pre {
 }
 .term-pop[hidden] { display: none; }
 
+/* while a lab is in "bigger editor" mode, the page behind must not scroll */
+body.lab-expanded { overflow: hidden; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
