@@ -1,0 +1,17 @@
+// Config for the Workers deploy path (`npx wrangler deploy`).
+// If you deploy via classic Pages instead, this file is not used.
+{
+  "name": "learn-robotics",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+  // Workers AI binding declared here in code — no dashboard step needed.
+  // The chat function finds it as env.AI (same as the Pages binding would be).
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true }
+}
