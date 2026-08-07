@@ -7,7 +7,7 @@
         "url": "https://www.youtube.com/watch?v=CrQ5atmjSqQ",
         "type": "video",
         "published": "2020-09-11",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Friendly sense-think-act tour with zero assumed knowledge — matches lesson 1's framing exactly."
       },
       {
@@ -15,7 +15,7 @@
         "url": "https://blockly.games/",
         "type": "tool",
         "published": "2024-01-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Free extra reps with the same block style our editor uses; Maze level pairs perfectly with Module 1."
       }
     ],
@@ -25,7 +25,7 @@
         "url": "https://blockly.games/maze",
         "type": "tool",
         "published": "2024-01-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Ten escalating loop puzzles — ideal optional practice after the zig-zag mission."
       }
     ],
@@ -35,7 +35,7 @@
         "url": "https://wokwi.com/",
         "type": "tool",
         "published": "2025-01-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "See a REAL ultrasonic distance sensor wired to a simulated board — the grown-up version of our green sensor block."
       }
     ],
@@ -45,7 +45,7 @@
         "url": "https://learn.sparkfun.com/tutorials/what-is-a-circuit/all",
         "type": "article",
         "published": "2013-02-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "The classic illustrated circuits explainer, with a live current-flow simulation link. Old but definitive."
       },
       {
@@ -53,7 +53,7 @@
         "url": "https://www.explainthatstuff.com/gears.html",
         "type": "article",
         "published": "2025-02-27",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Plain-English speed-vs-torque explanation with everyday examples; recently updated."
       },
       {
@@ -61,7 +61,7 @@
         "url": "https://www.youtube.com/watch?v=4ROtKKuSaBI",
         "type": "video",
         "published": "2021-07-17",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Clear animated gear-ratio and torque walkthrough if the article's diagrams aren't enough."
       }
     ],
@@ -71,34 +71,34 @@
         "url": "https://makecode.microbit.org/",
         "type": "tool",
         "published": "2025-06-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "Blocks with MANY event hats (button A, shake, sound) plus a built-in simulator — the bridge to real hardware."
       }
     ],
     "go-physical": [
       {
-        "title": "BBC micro:bit — official getting started",
-        "url": "https://microbit.org/get-started/",
-        "type": "docs",
-        "published": "2025-06-01",
-        "checked": "2026-08-05",
-        "why": "Recommended first board: cheap, robust, huge teen-focused ecosystem, MakeCode blocks-to-Python built in."
-      },
-      {
         "title": "Wokwi — keep simulating while you wait for parts",
         "url": "https://wokwi.com/",
         "type": "tool",
         "published": "2025-01-01",
-        "checked": "2026-08-05",
+        "checked": "2026-08-07",
         "why": "The doc's promise kept: the simulator path stays open if hardware isn't accessible yet."
       }
     ]
   },
   "allowedDomains": [
-    "youtube.com", "www.youtube.com", "youtu.be",
-    "wokwi.com", "microbit.org", "makecode.microbit.org",
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "wokwi.com",
+    "microbit.org",
+    "makecode.microbit.org",
     "blockly.games",
-    "learn.sparkfun.com", "explainthatstuff.com", "www.explainthatstuff.com",
-    "docs.arduino.cc", "learn.adafruit.com", "projects.raspberrypi.org"
+    "learn.sparkfun.com",
+    "explainthatstuff.com",
+    "www.explainthatstuff.com",
+    "docs.arduino.cc",
+    "learn.adafruit.com",
+    "projects.raspberrypi.org"
   ]
 }
