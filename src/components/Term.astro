@@ -1,10 +1,57 @@
 ---
-// Inline glossary term with hover/focus tooltip.
+// Inline glossary term with a tooltip that works on touch as well as hover.
 // Usage in MDX: <Term id="actuator">actuator</Term>
 // Definitions live in /public/glossary.json — one source of truth.
+//
+// Previously this was a hover-only CSS ::after, which meant the definition
+// was unreachable on a phone and got clipped inside scrolling containers.
+// It is now a real <button> + popover element: tap, click, focus, or Escape.
 import glossary from '../../public/glossary.json';
 const { id } = Astro.props;
 const entry = glossary[id];
 const def = entry ? entry.def : 'Definition coming soon.';
 ---
-<span class="term" tabindex="0" data-def={def} aria-label={`${id}: ${def}`}><slot /></span>
+<button class="term" type="button" aria-expanded="false" data-term={id}>
+  <slot />
+  <span class="term-pop" hidden role="tooltip">{def}</span>
+</button>
+
+<script>
+  function closeAll(except) {
+    for (const t of document.querySelectorAll('.term[aria-expanded="true"]')) {
+      if (t === except) continue;
+      t.setAttribute('aria-expanded', 'false');
+      t.querySelector('.term-pop').hidden = true;
+    }
+  }
+
+  for (const term of document.querySelectorAll('.term')) {
+    const pop = term.querySelector('.term-pop');
+    const show = (on) => {
+      closeAll(term);
+      term.setAttribute('aria-expanded', String(on));
+      pop.hidden = !on;
+      if (on) {
+        // flip the popover left if it would run off the right edge
+        pop.style.left = '0';
+        const box = pop.getBoundingClientRect();
+        if (box.right > window.innerWidth - 8) pop.style.left = `${window.innerWidth - 8 - box.right}px`;
+      }
+    };
+
+    term.addEventListener('click', () => show(pop.hidden));
+    term.addEventListener('mouseenter', () => show(true));
+    term.addEventListener('mouseleave', () => {
+      if (document.activeElement !== term) show(false);
+    });
+    term.addEventListener('focus', () => show(true));
+    term.addEventListener('blur', () => show(false));
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAll(null);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.term')) closeAll(null);
+  });
+</script>

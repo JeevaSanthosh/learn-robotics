@@ -197,6 +197,46 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
     : ok('C8', `${used.size} glossary terms all defined`);
 }
 
+// ---------- C-INLINE: no inline <script> survives into the build -----------
+// This is the regression guard for the bug that silently killed the chat
+// widget and the glossary filter for every visitor. Our CSP is
+// `script-src 'self'` with no 'unsafe-inline', but Astro inlines small
+// hoisted scripts by default, and the browser then blocks them with no
+// visible error anywhere except the console. Nothing in the source code
+// looks wrong — which is exactly why it needs a machine check.
+// Requires `npm run build` first (CI runs build before verify).
+{
+  const distDir = path.join(ROOT, 'dist');
+  let htmlFiles = [];
+  try {
+    htmlFiles = (await readdir(distDir, { recursive: true })).filter((f) => f.endsWith('.html'));
+  } catch {
+    htmlFiles = null;
+  }
+
+  if (htmlFiles === null) {
+    bad('C-INLINE', 'dist/ not found — run `npm run build` before verify');
+  } else {
+    const offenders = [];
+    for (const f of htmlFiles) {
+      const html = await readFile(path.join(distDir, f), 'utf8');
+      for (const m of html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)) {
+        if (/\btype=["']application\/(ld\+json|json)["']/.test(m[1])) continue; // data, not code
+        if (m[2].trim()) offenders.push(`${f} (${m[2].trim().length} bytes)`);
+      }
+    }
+    offenders.length
+      ? bad(
+          'C-INLINE',
+          `inline <script> in built HTML — CSP 'script-src self' will block these at runtime: ${offenders
+            .slice(0, 5)
+            .join(', ')}${offenders.length > 5 ? ` +${offenders.length - 5} more` : ''}. ` +
+            'Keep vite.build.assetsInlineLimit at 0 in astro.config.mjs.'
+        )
+      : ok('C-INLINE', `no inline scripts in ${htmlFiles.length} built pages (CSP-safe)`);
+  }
+}
+
 // ---------- report ----------------------------------------------------------
 console.log(passes.join('\n'));
 if (fails.length) {

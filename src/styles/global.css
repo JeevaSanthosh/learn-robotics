@@ -4,18 +4,25 @@
    grid paper, navy ink, one LED-amber accent that only lights up
    for actions and progress. Signature element: the PCB-trace
    progress bar (see .trace-progress) whose LEDs light per lesson.
+
+   Dark mode is a real second theme ("blueprint at night"), not an
+   inverted filter: the grid becomes drafting paper at night and the
+   LED accent finally reads like an actual lit LED.
    --------------------------------------------------------------- */
 
 :root {
+  color-scheme: light;
+
   --paper: #eef3f8;
   --grid: #d9e4ee;
   --card: #ffffff;
+  --card-sunk: #f4f8fb;   /* recessed panels: code, chat log */
   --ink: #17293e;
   --ink-soft: #4a5d74;
-  --wire: #3e6c9e;      /* links, secondary interactive */
-  --led: #ffb93b;       /* the one warm accent: actions, lit LEDs */
+  --wire: #3e6c9e;        /* links, secondary interactive */
+  --led: #ffb93b;         /* the one warm accent: actions, lit LEDs */
   --led-glow: #ffd98a;
-  --go: #2fa36b;        /* completed / success */
+  --go: #2fa36b;          /* completed / success */
   --lock: #9aa9ba;
   --danger: #c8503c;
 
@@ -25,14 +32,36 @@
 
   --radius: 10px;
   --shadow: 0 1px 2px rgba(23, 41, 62, 0.08), 0 4px 14px rgba(23, 41, 62, 0.07);
-  --maxw: 46rem;
+  --hard-edge: #17293e;   /* colour of the offset "printed" button shadow */
+
+  --maxw: 46rem;      /* reading column */
+  --maxw-wide: 72rem; /* lab / anything that needs room to breathe */
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --paper: #0e1826;
+  --grid: #1b2c42;
+  --card: #14212f;
+  --card-sunk: #0b1420;
+  --ink: #dce7f2;
+  --ink-soft: #93a7bd;
+  --wire: #6fb0e8;
+  --led: #ffc24d;
+  --led-glow: #7a5410;
+  --go: #45c68c;
+  --lock: #4c5b6d;
+  --danger: #f0806c;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --hard-edge: #05090f;
 }
 
 * { box-sizing: border-box; }
 
 html {
   background-color: var(--paper);
-  /* graph-paper grid */
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -62,7 +91,7 @@ a:hover { color: var(--ink); }
 
 code, pre { font-family: var(--font-mono); font-size: 0.92em; }
 pre {
-  background: var(--ink);
+  background: #101d2b;
   color: #e7eef7;
   padding: 1rem;
   border-radius: var(--radius);
@@ -77,6 +106,13 @@ pre {
 
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.1rem 4rem; }
 
+/* Escape hatch: let a child (the lab) break out of the reading column
+   without needing its own wrapper element. */
+.bleed {
+  width: min(var(--maxw-wide), calc(100vw - 2.2rem));
+  margin-left: calc(50% - min(var(--maxw-wide), calc(100vw - 2.2rem)) / 2);
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--grid);
@@ -85,29 +121,45 @@ pre {
   padding: 1.1rem 1.25rem;
 }
 
+/* Hierarchy: not everything should be the same card. `.card-do` marks the
+   thing the learner acts on; `.card-note` marks supporting context. */
+.card-do { border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--hard-edge); }
+.card-note {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-left: 3px solid var(--grid);
+  border-radius: 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+}
+
 .btn {
   display: inline-block;
   font-family: var(--font-display);
   font-size: 1rem;
   background: var(--led);
-  color: var(--ink);
+  color: #17293e;
   border: 2px solid var(--ink);
   border-radius: var(--radius);
   padding: 0.55rem 1.1rem;
   cursor: pointer;
   text-decoration: none;
-  box-shadow: 3px 3px 0 var(--ink);
+  box-shadow: 3px 3px 0 var(--hard-edge);
   transition: transform 80ms ease, box-shadow 80ms ease;
 }
-.btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); color: var(--ink); }
-.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--hard-edge); color: #17293e; }
+.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--hard-edge); }
 .btn[disabled] { background: var(--lock); cursor: not-allowed; box-shadow: none; }
 
 .btn-quiet {
   background: var(--card);
+  color: var(--ink);
   box-shadow: none;
   border: 1.5px solid var(--ink-soft);
 }
+.btn-quiet:hover { color: var(--ink); box-shadow: 2px 2px 0 var(--hard-edge); }
+
+.btn-sm { font-size: 0.85rem; padding: 0.3rem 0.7rem; box-shadow: 2px 2px 0 var(--hard-edge); }
 
 .eyebrow {
   font-family: var(--font-mono);
@@ -115,6 +167,12 @@ pre {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--ink-soft);
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
 /* ------------- signature: PCB-trace progress bar -------------- */
@@ -144,27 +202,39 @@ pre {
   border-color: var(--ink);
   box-shadow: 0 0 8px 2px var(--led-glow);
 }
+/* marks where the learner is standing right now */
+.trace-progress .led.here { border-color: var(--wire); border-width: 3px; }
 
-/* glossary term tooltips */
+/* ------------- glossary term tooltips (touch-safe) -------------
+   Was hover-only via ::after, unreachable on touch and clipped inside
+   scrolling containers. Now a real toggleable element. */
 .term {
   border-bottom: 2px dotted var(--led);
   cursor: help;
   position: relative;
+  background: none;
+  border-top: 0; border-left: 0; border-right: 0;
+  font: inherit;
+  color: inherit;
+  padding: 0;
 }
-.term:hover::after, .term:focus::after {
-  content: attr(data-def);
+.term-pop {
   position: absolute;
   left: 0;
-  top: 1.6em;
-  z-index: 10;
+  top: 1.7em;
+  z-index: 40;
   width: min(280px, 70vw);
   background: var(--ink);
-  color: #eef3f8;
+  color: var(--paper);
   font-size: 0.85rem;
+  font-family: var(--font-body);
   line-height: 1.45;
+  text-align: left;
   padding: 0.5rem 0.7rem;
   border-radius: 8px;
+  box-shadow: var(--shadow);
 }
+.term-pop[hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
