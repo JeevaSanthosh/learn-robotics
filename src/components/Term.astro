@@ -22,11 +22,16 @@ const def = entry ? entry.def : 'Definition coming soon.';
       if (t === except) continue;
       t.setAttribute('aria-expanded', 'false');
       t.querySelector('.term-pop').hidden = true;
+      t.dispatchEvent(new CustomEvent('lr-close'));
     }
   }
 
   for (const term of document.querySelectorAll('.term')) {
     const pop = term.querySelector('.term-pop');
+    // "pinned" = opened by an explicit click/tap/Enter, so hovering away
+    // shouldn't dismiss it.
+    let pinned = false;
+
     const show = (on) => {
       closeAll(term);
       term.setAttribute('aria-expanded', String(on));
@@ -39,13 +44,21 @@ const def = entry ? entry.def : 'Definition coming soon.';
       }
     };
 
-    term.addEventListener('click', () => show(pop.hidden));
-    term.addEventListener('mouseenter', () => show(true));
-    term.addEventListener('mouseleave', () => {
-      if (document.activeElement !== term) show(false);
+    // A pointer press fires focus BEFORE click. Toggling on `pop.hidden` here
+    // meant focus opened the tooltip and the click immediately closed it
+    // again — so tapping a term on a phone did nothing at all. Track intent
+    // explicitly instead of inferring it from current visibility.
+    term.addEventListener('click', () => {
+      pinned = !pinned;
+      show(pinned);
     });
-    term.addEventListener('focus', () => show(true));
-    term.addEventListener('blur', () => show(false));
+
+    term.addEventListener('mouseenter', () => { if (!pinned) show(true); });
+    term.addEventListener('mouseleave', () => { if (!pinned) show(false); });
+    term.addEventListener('focus', () => { if (!pinned) show(true); });
+    term.addEventListener('blur', () => { pinned = false; show(false); });
+
+    term.addEventListener('lr-close', () => { pinned = false; });
   }
 
   document.addEventListener('keydown', (e) => {

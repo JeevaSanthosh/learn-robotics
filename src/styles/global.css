@@ -60,6 +60,23 @@
 
 * { box-sizing: border-box; }
 
+/* ---------------------------------------------------------------
+   The `hidden` attribute must always win.
+
+   Browsers implement `[hidden] { display: none }` in the USER-AGENT
+   stylesheet, and every author rule outranks the user-agent origin
+   regardless of specificity. So any `.thing { display: flex }` in a
+   component silently defeats `el.hidden = true`, and the element never
+   hides — no error, nothing wrong-looking in the source.
+
+   This is what broke the chat panel's close button (`.chat-panel`
+   was `display: flex`) and MarkDone's button (`.btn` is
+   `display: inline-block`). Condition C-HIDDEN in scripts/verify.mjs
+   fails CI if a component reintroduces the pattern; this rule is the
+   belt to that suspenders.
+   --------------------------------------------------------------- */
+[hidden] { display: none !important; }
+
 html {
   background-color: var(--paper);
   background-image:

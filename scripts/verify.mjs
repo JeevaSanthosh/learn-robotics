@@ -237,6 +237,109 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
   }
 }
 
+// ---------- C-HIDDEN: nothing may out-rank the `hidden` attribute ----------
+// Browsers ship `[hidden] { display: none }` in the USER-AGENT stylesheet, and
+// EVERY author rule beats the user-agent origin regardless of specificity. So a
+// component writing `.panel { display: flex }` silently defeats
+// `el.hidden = true` — the element never hides, no error is raised, and the
+// source looks perfectly correct. This killed the chat panel's close button and
+// MarkDone's button. Two guards, both required:
+//   1. `[hidden] { display: none !important }` in global.css (the fix)
+//   2. this check (stops a component reintroducing the pattern)
+{
+  const globalCss = await readFile(path.join(ROOT, 'src/styles/global.css'), 'utf8');
+  /\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important/.test(globalCss)
+    ? ok('C-HIDDEN', 'global.css forces [hidden] to win over author display rules')
+    : bad('C-HIDDEN', 'global.css must contain `[hidden] { display: none !important; }`');
+
+  // Collect every class whose element is toggled via the hidden attribute,
+  // then flag any rule that sets `display` on that class without excluding
+  // [hidden]. Includes classes shared with the element (e.g. `.btn`).
+  const compDirs = ['src/components', 'src/pages', 'src/layouts'];
+  const sources = [];
+  for (const dir of compDirs) {
+    for (const f of await readdir(path.join(ROOT, dir), { recursive: true })) {
+      if (!/\.astro$/.test(f)) continue;
+      sources.push({ name: `${dir}/${f}`, src: await readFile(path.join(ROOT, dir, f), 'utf8') });
+    }
+  }
+
+  const risky = new Set();
+  for (const { src } of sources) {
+    // markup: <tag class="a b" ... hidden>
+    for (const m of src.matchAll(/<[a-zA-Z][^>]*\bclass=["']([^"']+)["'][^>]*\shidden(?=[\s/>])/g))
+      for (const c of m[1].split(/\s+/)) if (c) risky.add('.' + c);
+    // script: someEl.hidden = ...  where someEl was found by class
+    if (/\b\w+\.hidden\s*=/.test(src)) {
+      for (const m of src.matchAll(/querySelector(?:All)?\(\s*['"`]\.([\w-]+)['"`]\s*\)/g))
+        risky.add('.' + m[1]);
+    }
+  }
+
+  // Only ever parse <style> blocks as CSS — running the rule-matcher over an
+  // entire .astro file treats script bodies as selectors and reports nonsense.
+  const styleBlocks = [{ name: 'src/styles/global.css', css: globalCss }];
+  for (const { name, src } of sources)
+    for (const m of src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g))
+      styleBlocks.push({ name, css: m[1] });
+
+  const offenders = [];
+  for (const { name, css } of styleBlocks) {
+    for (const m of css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+      const body = m[2];
+      const decl = body.match(/(?:^|[\s;])display\s*:[^;]*/)?.[0];
+      if (!decl) continue;
+      const display = decl.match(/display\s*:\s*([^;!]+)/)?.[1]?.trim();
+      if (!display || display === 'none' || /!important/.test(decl)) continue;
+      for (const sel of m[1].split(',')) {
+        const part = sel.trim();
+        if (!part || /\[hidden\]/.test(part)) continue;
+        for (const cls of risky) {
+          if (part === cls || part.endsWith(' ' + cls) || part.endsWith('>' + cls)) {
+            offenders.push(`${name}: "${part} { display: ${display} }" would defeat [hidden] on ${cls}`);
+          }
+        }
+      }
+    }
+  }
+
+  // The global !important rule neutralises these, so they are a warning-level
+  // smell rather than a hard failure — but they are reported so nobody relies
+  // on the safety net by accident.
+  offenders.length
+    ? ok('C-HIDDEN', `noted ${offenders.length} display-vs-hidden collision(s), neutralised by the global rule: ${offenders[0]}`)
+    : ok('C-HIDDEN', 'no component CSS sets display on a hidden-toggled element');
+}
+
+// ---------- C-LABELS: lesson instructions must match real UI labels --------
+// Lessons say things like 'Tap **Show real code**'. Renaming that button in a
+// component leaves the instruction pointing at a control that no longer
+// exists — the build still passes, the tests still pass, and only the learner
+// notices. (This happened: the button was shortened to "Real code" while two
+// lessons still said "Show real code".)
+{
+  const compSrc = (
+    await Promise.all(
+      (await readdir(path.join(ROOT, 'src/components'), { recursive: true }))
+        .filter((f) => f.endsWith('.astro'))
+        .map((f) => readFile(path.join(ROOT, 'src/components', f), 'utf8'))
+    )
+  )
+    .join('\n')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+  const referenced = new Set();
+  for (const l of lessons)
+    for (const m of l.raw.matchAll(/\b(?:Tap|Press|Click|Hit|Choose)\s+\*\*([^*]{2,40})\*\*/g))
+      referenced.add(m[1].trim());
+
+  const dangling = [...referenced].filter((label) => !compSrc.includes(label));
+  dangling.length
+    ? bad('C-LABELS', `lesson text points at UI labels that no component renders: ${dangling.map((d) => `"${d}"`).join(', ')}`)
+    : ok('C-LABELS', `${referenced.size} UI label(s) referenced in lessons all exist in components`);
+}
+
 // ---------- report ----------------------------------------------------------
 console.log(passes.join('\n'));
 if (fails.length) {
