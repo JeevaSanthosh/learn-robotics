@@ -101,7 +101,7 @@ const totalLessons = lessons.length;
 
   function paint() {
     const s = load();
-    const done = s.completed.length;
+    const done = Object.keys(s.lessons).length;
 
     document.getElementById('pct').textContent = TOTAL ? `${Math.round((done / TOTAL) * 100)}%` : '0%';
     document.getElementById('pct-sub').textContent = `${done} of ${TOTAL} lessons`;
@@ -115,7 +115,7 @@ const totalLessons = lessons.length;
       : `Locked · ${gate.missing.length} left`;
 
     for (const li of document.querySelectorAll('.lesson-list li')) {
-      const ok = s.completed.includes(li.dataset.slug);
+      const ok = li.dataset.slug in s.lessons;
       li.classList.toggle('done', ok);
       li.querySelector('.tick').textContent = ok ? '●' : '○';
     }
@@ -197,13 +197,13 @@ const totalLessons = lessons.length;
 
     // --- checkpoint quizzes ---------------------------------------------
     const qHost = document.getElementById('quizzes');
-    const entries = Object.entries(s.quizScores);
+    const entries = Object.entries(s.quizzes);
     if (entries.length) {
       qHost.innerHTML = '';
       const ul = document.createElement('ul');
-      for (const [slug, { score, total }] of entries) {
+      for (const [slug, { best }] of entries) {
         const li = document.createElement('li');
-        li.textContent = `${slug} — best ${score}/${total}`;
+        li.textContent = `${slug} — best ${best.score}/${best.total}`;
         ul.appendChild(li);
       }
       qHost.appendChild(ul);

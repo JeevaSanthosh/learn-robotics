@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "freshness": "node scripts/freshness.mjs",
     "verify": "node scripts/verify.mjs",
-    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-assessment.mjs && node scripts/test-sim.mjs && node scripts/test-review.mjs && node scripts/test-dom.mjs"
+    "test": "node scripts/test-interpreter.mjs && node scripts/test-new.mjs && node scripts/test-assessment.mjs && node scripts/test-sim.mjs && node scripts/test-review.mjs && node scripts/test-migrate.mjs && node scripts/test-skills.mjs && node scripts/test-dom.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
