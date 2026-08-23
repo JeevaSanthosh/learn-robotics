@@ -1,0 +1,17 @@
+# Normalize line endings: store text files with LF in the repo,
+# regardless of the checkout platform. Prevents CRLF-vs-LF bugs in tooling
+# (e.g. frontmatter parsers that assume "\n").
+* text=auto eol=lf
+
+# Binary assets: never normalize or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
