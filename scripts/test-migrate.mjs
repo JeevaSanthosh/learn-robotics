@@ -53,8 +53,10 @@ const v1 = {
   const once = migrate(v1);
   const twice = migrate(once);
   t('M12 migration is idempotent (v2 in -> identical v2 out)', eq(once, twice));
-  // and stable regardless of "now", since createdAt comes from the v1 blob path
-  const a = migrate(structuredClone(v1)), b = migrate(structuredClone(v1));
+  // Deterministic given the same clock: a v1 blob with no createdAt takes it
+  // from `now`, so pin `now` rather than racing the millisecond boundary.
+  const NOW = new Date('2026-09-01T09:00:00Z');
+  const a = migrate(structuredClone(v1), NOW), b = migrate(structuredClone(v1), NOW);
   t('M13 migration is deterministic for the same input', eq(a, b));
 }
 

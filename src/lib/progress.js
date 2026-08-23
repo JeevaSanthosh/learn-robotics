@@ -320,25 +320,58 @@ export function reasoningSummary(state = load()) {
   };
 }
 
-// --- Confidence gate (locked decision made concrete) -----------------------
-// "Ready for hardware" means: every checkpoint lesson is complete AND the gate
-// quiz scored >= 80%. GATES[] and per-kit unlocks arrive in a later phase; the
-// single GATE stays the source of truth for now so verify.mjs C5 is unchanged.
+// --- Gates: money-and-safety unlocks, not security (PRD §12) ---------------
+// Gates guard spending real money (and, later, LiPo safety), nothing else. A
+// determined teen can bypass them in devtools and that is fine — what matters
+// is the default path doesn't spend £70 before the ideas have landed. GATES is
+// a list now (was a single GATE); Gate B (ESP32, afterModule 6) and per-kit
+// pages arrive with the Kit 2 content, so they are not declared until the
+// lessons and quiz they reference exist.
+export const GATES = [
+  {
+    id: 'A',
+    afterModule: 5,
+    label: 'Kit 1 — micro:bit robot',
+    requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm4-motors-gears', 'm5-obstacle-course'],
+    requiredProjects: [], // wired to the portfolio in Phase 4
+    quiz: 'm5-gate-quiz',
+    minRatio: 0.8,
+    unlocks: '/go-physical/',
+  },
+];
+
+// Backward-compatible alias for callers that predate GATES[] (the go-physical
+// page). Getters so there is still a single source of truth.
 export const GATE = {
-  requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm4-motors-gears', 'm5-obstacle-course'],
-  gateQuiz: 'm5-gate-quiz',
-  minRatio: 0.8,
+  get requiredCheckpoints() { return GATES[0].requiredCheckpoints; },
+  get gateQuiz() { return GATES[0].quiz; },
+  get minRatio() { return GATES[0].minRatio; },
 };
 
-function gateStatusFrom(s) {
-  const missing = GATE.requiredCheckpoints.filter((c) => !(c in s.lessons));
-  const quiz = s.quizzes[GATE.gateQuiz]?.best;
-  const quizOk = !!quiz && quiz.score / quiz.total >= GATE.minRatio;
-  return { open: missing.length === 0 && quizOk, missing, quizOk, quiz };
+function gateStatusFrom(s, gate = GATES[0]) {
+  const missing = gate.requiredCheckpoints.filter((c) => !(c in s.lessons));
+  const projectsMissing = (gate.requiredProjects || []).filter(
+    (p) => (s.projects?.[p]?.status ?? 'not-started') !== 'complete'
+  );
+  const quiz = s.quizzes[gate.quiz]?.best;
+  const quizOk = !!quiz && quiz.score / quiz.total >= gate.minRatio;
+  return {
+    id: gate.id, unlocks: gate.unlocks,
+    open: missing.length === 0 && projectsMissing.length === 0 && quizOk,
+    missing, projectsMissing, quizOk, quiz,
+  };
 }
 
-export function gateStatus() {
-  return gateStatusFrom(load());
+/** Status of one gate (default Gate A). */
+export function gateStatus(gateId = 'A') {
+  const gate = GATES.find((g) => g.id === gateId) || GATES[0];
+  return gateStatusFrom(load(), gate);
+}
+
+/** Status of every gate — for a multi-gate roadmap view. */
+export function allGateStatus() {
+  const s = load();
+  return GATES.map((g) => gateStatusFrom(s, g));
 }
 
 // --- Light gamification -----------------------------------------------------

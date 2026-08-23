@@ -1,0 +1,7 @@
+{
+  "id": "m3-dont-crash",
+  "size": { "w": 360, "h": 300 },
+  "start": { "x": 60, "y": 260, "heading": -90 },
+  "walls": [{ "x": 0, "y": 60, "w": 360, "h": 16 }],
+  "variation": { "wallJitter": 45 }
+}

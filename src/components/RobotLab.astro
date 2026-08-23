@@ -26,6 +26,12 @@ const {
   predictChoices = '[]',        // JSON: [{ label, rule }]  (rule like "bumped == false")
   predictMetric = '',           // for predict="number": which run metric to compare
   predictTolerance = '',        // for predict="number": ± tolerance
+  world = '',                   // world id (src/content/worlds) for seeded grading (§8.6)
+  seeds = '',                   // number of seeded variants to grade across (R2+)
+  mustPass = '',                // how many seeds must pass (default 80%)
+  unseen = '',                  // 'true' → grade on seeds the learner never watched (R4+)
+  scoreBy = '',                 // scored metric name (R4+)
+  fixedWorld = '',              // rigor honesty: this mission grades in one tuned arena
 } = Astro.props;
 ---
 <section
@@ -47,6 +53,11 @@ const {
   data-predict-choices={predictChoices}
   data-predict-metric={predictMetric}
   data-predict-tolerance={predictTolerance}
+  data-world={world}
+  data-seeds={seeds}
+  data-mustpass={mustPass}
+  data-unseen={unseen}
+  data-scoreby={scoreBy}
 >
   {goalText && <p class="goal"><span class="eyebrow">Your mission</span><br />{goalText}</p>}
 
@@ -78,6 +89,10 @@ const {
       </div>
       <p class="status" role="status"></p>
       <div class="why-out" role="status" hidden></div>
+      <div class="seeds" hidden>
+        <p class="eyebrow">Graded across worlds — it has to work on all of them, not just the one you watched. Click a world to replay it.</p>
+        <div class="seed-chips" role="list"></div>
+      </div>
       <div class="review" hidden>
         <p class="eyebrow">Ways to make this better</p>
         <ul class="review-list"></ul>
@@ -116,6 +131,9 @@ const {
   import { completeLesson, recordPrediction, recordConstraintSolve, recordMissionOutcome } from '../lib/progress.js';
   import { encodeProgram, decodeProgram } from '../lib/share.js';
   import { reviewProgram, explainRun } from '../lib/review.js';
+  import { getWorld } from '../lib/worlds.js';
+  import { grade } from '../lib/sim/grade.js';
+  import { variant } from '../lib/sim/world.js';
 
   defineRobotBlocks();
 
@@ -136,6 +154,26 @@ const {
     const predictMetric = root.dataset.predictMetric || '';
     const predictTolerance = Number(root.dataset.predictTolerance) || 0;
 
+    // Seeded multi-world grading config (§8.6). When a world + seeds are set,
+    // the mission is graded across seeded variants and passes only if enough of
+    // them pass — a hard-coded path that works in the arena you watched fails
+    // the others.
+    const worldId = root.dataset.world || '';
+    const worldSpec = worldId ? getWorld(worldId) : null;
+    const seedCount = Number(root.dataset.seeds) || 0;
+    const seeded = !!(worldSpec && seedCount);
+    const unseen = root.dataset.unseen === 'true';
+    const mustPass = Number(root.dataset.mustpass) || (seedCount ? Math.ceil(seedCount * 0.8) : 0);
+    const seedBase = unseen ? 900000 : 1000;
+    const seedList = seeded ? Array.from({ length: seedCount }, (_, i) => seedBase + i) : [];
+
+    // Arena the learner watches: for a seeded lab it's the first seed's variant;
+    // otherwise the inline props (unchanged behaviour).
+    const arenaFor = (seed) => {
+      const w = variant(worldSpec, seed);
+      return { walls: w.walls || [], target: w.target || null, waypoints: w.waypoints || [], line: w.line || [], start: w.start || null };
+    };
+
     const ws = Blockly.inject(root.querySelector('.blockly-host'), {
       toolbox: toolboxFor(root.dataset.blocks),
       scrollbars: false,
@@ -145,7 +183,8 @@ const {
     });
 
     const canvas = root.querySelector('canvas');
-    const sim = new RobotSim(canvas, { walls, target, waypoints, line, start: startPose });
+    // `let` so a seed-chip replay can rebuild the sim on a different world.
+    let sim = new RobotSim(canvas, seeded ? arenaFor(seedList[0]) : { walls, target, waypoints, line, start: startPose });
     const status = root.querySelector('.status');
     const runBtn = root.querySelector('.run');
     const autoBox = root.querySelector('.autorun-box');
@@ -423,7 +462,8 @@ const {
         await new BlockRunner(ws, sim).run();
         hasRun = true;
         scorePrediction();
-        checkGoal();
+        if (seeded) await runSeedGrade();
+        else checkGoal();
         paintReview();
         if (whyBtn) whyBtn.hidden = false;
       } catch (err) {
@@ -433,6 +473,71 @@ const {
         runBtn.disabled = false;
         root.classList.remove('is-running');
       }
+    }
+
+    // ---- seeded multi-world grading + seed chips (§8.6) ------------------
+    async function runSeedGrade() {
+      // Blocks failing a required concept or a ban should still be caught before
+      // celebrating, exactly as in the single-world path.
+      const missing = missingRequired();
+      if (missing.length) {
+        setStatus('👀 It ran — but this mission is about ' + missing.map((t) => FRIENDLY[t] || t).join(' and ') + '. Use that, and it counts.');
+        return;
+      }
+      if (banned.length) {
+        const usedTypes = new Set(ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type));
+        const hit = banned.filter((t) => usedTypes.has(t));
+        if (hit.length) { setStatus('🚫 This challenge bans ' + hit.map((t) => FRIENDLY[t] || t).join(' and ') + '.'); return; }
+      }
+
+      setStatus(`Grading across ${seedCount} worlds…`);
+      const runFn = (driver) => new BlockRunner(ws, driver).run();
+      const result = await grade(runFn, worldSpec, { seeds: seedList, mustPass, goal, unseen });
+      renderSeedChips(result.results);
+      root.querySelector('.seeds').hidden = false;
+
+      // "Don't crash" (survive) is passed by a robot that never moves; the
+      // mission is to drive toward the wall and stop, so require real progress.
+      if (result.passed && /^survive/.test(goal) && sim.distanceFromStart < 1) {
+        setStatus('Your robot barely moved — the mission is to drive toward the wall and stop before you crash.');
+        return;
+      }
+      if (result.passed) {
+        setStatus(`🎉 Passed ${result.passedCount}/${seedCount} worlds — mission complete!`);
+        if (maxBlocks || banned.length) recordConstraintSolve(lessonId);
+        recordMissionOutcome({ tutorUsed: !!window.__lrTutorUsed });
+        completeLesson(lessonId);
+      } else {
+        setStatus(`Passed ${result.passedCount}/${seedCount} — you need ${mustPass}. It works on some worlds but not all: that's the difference between a program and a robot. Click a red world to watch it fail.`);
+      }
+    }
+
+    function renderSeedChips(results) {
+      const host = root.querySelector('.seed-chips');
+      host.innerHTML = '';
+      results.forEach((r, i) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'seed-chip ' + (r.passed ? 'pass' : 'fail');
+        chip.setAttribute('role', 'listitem');
+        chip.textContent = `${r.passed ? '✓' : '✗'} ${i + 1}`;
+        chip.title = r.passed ? `World ${i + 1}: passed` : `World ${i + 1}: ${r.failureReason || 'failed'} — click to replay`;
+        chip.addEventListener('click', () => replaySeed(r.seed));
+        host.appendChild(chip);
+      });
+    }
+
+    async function replaySeed(seed) {
+      if (running) return;
+      running = true;
+      runBtn.disabled = true;
+      root.classList.add('is-running');
+      setStatus('Replaying that world…');
+      sim = new RobotSim(canvas, arenaFor(seed));
+      try { await new BlockRunner(ws, sim).run(); paintReview(); }
+      catch (err) { setStatus('🤔 ' + err.message); }
+      finally { running = false; runBtn.disabled = false; root.classList.remove('is-running'); }
+      if (whyBtn) whyBtn.hidden = false;
     }
 
     runBtn.addEventListener('click', () => execute(false));
@@ -677,6 +782,18 @@ const {
     background: color-mix(in srgb, var(--wire, #3e6c9e) 5%, transparent);
     font-size: 0.95rem;
   }
+
+  /* seed chips — green/red per world, glyphs not colour alone (§15.4) */
+  .seeds { margin: 0.6rem 0 0; }
+  .seed-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .seed-chip {
+    font: inherit; cursor: pointer; padding: 0.2rem 0.55rem;
+    border-radius: 999px; border: 1px solid var(--grid, #d9e4ee);
+    font-variant-numeric: tabular-nums; font-size: 0.9rem;
+  }
+  .seed-chip.pass { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 14%, transparent); }
+  .seed-chip.fail { border-color: var(--stop, #d1495b); background: color-mix(in srgb, var(--stop, #d1495b) 12%, transparent); }
+  .seed-chip:hover { outline: 2px solid var(--wire, #3e6c9e); }
 
   .lab-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
   /* The lab used to be locked to one column inside a 46rem reading
