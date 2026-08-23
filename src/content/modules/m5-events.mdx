@@ -25,6 +25,12 @@ You've been using one all along without seeing it: every program so far ran *whe
   required="robot_start"
   goalText="Under a 'when Run is pressed' hat: blink hello once, then drive to the target. No hat, no start!"
   target='{"x":290,"y":80,"r":28}'
+  predict="choice"
+  predictPrompt="Before you run: will the robot reach the target pad?"
+  predictChoices={JSON.stringify([
+    { label: "Yes — it reaches the pad", rule: "reachedTarget == true" },
+    { label: "No — it stops short or drives past", rule: "reachedTarget == false" }
+  ])}
 />
 
 On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.

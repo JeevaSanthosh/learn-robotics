@@ -66,6 +66,18 @@ const totalLessons = lessons.length;
     <p><a class="btn btn-quiet" href="/assessment/">Take an assessment →</a></p>
   </section>
 
+  <h2>How you think</h2>
+  <section class="card">
+    <p class="eyebrow">Trends, not scores — the point is that they move as you grow (§ reasoning)</p>
+    <dl class="reasoning-grid" id="reasoning">
+      <div><dt>Prediction accuracy</dt><dd id="rz-pred">—</dd><p class="rz-note">how often your predict-then-run guess matched</p></div>
+      <div><dt>Debug first-try rate</dt><dd id="rz-debug">—</dd><p class="rz-note">bugs you located on the first guess</p></div>
+      <div><dt>Constraint solves</dt><dd id="rz-constraint">0</dd><p class="rz-note">missions passed under a block budget or ban</p></div>
+      <div><dt>Unassisted missions</dt><dd id="rz-unassisted">—</dd><p class="rz-note">passed without asking the tutor</p></div>
+    </dl>
+    <p class="muted" id="rz-empty">Predict before you run, and try a “spot the bug” challenge — these fill in as you go. A wrong prediction is worth as much as a right one.</p>
+  </section>
+
   <h2>Assessment history</h2>
   <section class="card">
     <div id="history"><p class="muted">No attempts yet.</p></div>
@@ -94,7 +106,7 @@ const totalLessons = lessons.length;
 <script>
   import {
     load, gateStatus, topicMastery, BADGE_LABELS, exportProgress, importProgress,
-    dailyHistory, currentStreak, longestStreak,
+    dailyHistory, currentStreak, longestStreak, reasoningSummary,
   } from '../lib/progress.js';
 
   const TOTAL = Number(document.querySelectorAll('.lesson-list li').length);
@@ -175,6 +187,19 @@ const totalLessons = lessons.length;
       }
     }
 
+    // --- how you think (reasoning trends) -------------------------------
+    const rz = reasoningSummary(s);
+    const pctText = (v) => (v === null ? '—' : `${Math.round(v * 100)}%`);
+    document.getElementById('rz-pred').textContent =
+      rz.predictionsMade ? `${pctText(rz.predictionAccuracy)} (${rz.predictionsMade})` : '—';
+    document.getElementById('rz-debug').textContent =
+      rz.debugAttempts ? `${pctText(rz.debugFirstTryRate)} (${rz.debugAttempts})` : '—';
+    document.getElementById('rz-constraint').textContent = String(rz.constraintSolves);
+    document.getElementById('rz-unassisted').textContent =
+      rz.unassistedRate === null ? '—' : `${pctText(rz.unassistedRate)} (${rz.unassistedMissions})`;
+    const anyReasoning = rz.predictionsMade || rz.debugAttempts || rz.constraintSolves || rz.unassistedMissions;
+    document.getElementById('rz-empty').hidden = !!anyReasoning;
+
     // --- assessment history ---------------------------------------------
     const runs = (s.assessments || []).slice().reverse();
     const hHost = document.getElementById('history');
@@ -233,6 +258,12 @@ const totalLessons = lessons.length;
 </script>
 
 <style>
+  .reasoning-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; margin: 0.4rem 0 0; }
+  @media (min-width: 640px) { .reasoning-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .reasoning-grid dt { font-weight: 600; }
+  .reasoning-grid dd { margin: 0.1rem 0 0; font-family: var(--font-display); font-size: 1.6rem; line-height: 1.1; }
+  .reasoning-grid .rz-note { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--ink-soft, #4a5d74); }
+
   .overview { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
   .big { display: flex; flex-direction: column; }
   .big span:first-child { font-family: var(--font-display); font-size: 3rem; line-height: 1; }

@@ -39,6 +39,9 @@ export class SimCore {
     this.start = world.start || null;           // {x,y,heading(deg)}
     this.impairments = world.impairments || {}; // {sensorNoiseSigma, sensorDropout, sensorCone, ...}
     this.seed = world.seed ?? 1;
+    // When on, one lightweight sample is recorded per tick, for the run-trace
+    // failure explainer (§8.8). Off by default so grading stays fast.
+    this.captureTrace = !!world.captureTrace;
     // The world object is what sensors.js reads; keep a normalised handle.
     this.world = { walls: this.walls, line: this.line };
     this.reset();
@@ -63,12 +66,18 @@ export class SimCore {
     this.offLineTicks = 0;
     this.onLineTicks = 0;
     this.ticks = 0;
+    this.trace = [];
     this.startX = this.x;
     this.startY = this.y;
   }
 
   setSpeed(v) { this.speed = Math.min(3, Math.max(0.5, Number(v) || 1)); }
   stop() { this.stopped = true; }
+
+  /** One lightweight trace sample; only called when captureTrace is on. */
+  _sample() {
+    this.trace.push({ tick: this.ticks, x: this.x, y: this.y, heading: this.heading, distance: this.readDistance() });
+  }
 
   // --- generator commands (one yield per tick) ---------------------------
   *moveGen(units = 1) {
@@ -87,6 +96,7 @@ export class SimCore {
       this.checkWaypoints();
       this.sampleLine();
       this.ticks++;
+      if (this.captureTrace) this._sample();
       yield;
     }
   }
@@ -98,6 +108,7 @@ export class SimCore {
     for (let i = 0; i < steps && !this.stopped; i++) {
       this.heading += rad / steps;
       this.ticks++;
+      if (this.captureTrace) this._sample();
       yield;
     }
   }
@@ -116,7 +127,7 @@ export class SimCore {
 
   *waitGen(seconds) {
     const ticks = Math.max(0, Math.round(seconds * TICKS_PER_SEC));
-    for (let i = 0; i < ticks && !this.stopped; i++) { this.ticks++; yield; }
+    for (let i = 0; i < ticks && !this.stopped; i++) { this.ticks++; if (this.captureTrace) this._sample(); yield; }
   }
 
   // --- sensors (sync) ----------------------------------------------------

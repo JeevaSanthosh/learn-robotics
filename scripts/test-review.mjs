@@ -1,7 +1,7 @@
 // Tests for the program-review engine. The risk with an advice feature is
 // that it fires on beginners who are doing fine (which teaches them to ignore
 // it) or stays silent on the one bug it exists to catch. Both are tested.
-import { reviewProgram, flatten, findRepeatedPattern } from '../src/lib/review.js';
+import { reviewProgram, flatten, findRepeatedPattern, explainRun } from '../src/lib/review.js';
 
 const pass = [], fail = [];
 const t = (n, c, extra = '') => (c ? pass : fail).push(`  ${c ? 'PASS' : 'FAIL'} ${n}${c || !extra ? '' : ` — ${extra}`}`);
@@ -122,6 +122,35 @@ t('R23 pattern finder finds the shortest unit',
 t('R24 survives malformed input', (() => {
   try { reviewProgram(null); reviewProgram({}); reviewProgram({ blocks: {} }); return true; } catch { return false; }
 })());
+
+// ----------------------------------------------------- run-trace explainer
+{
+  t('R25 explainRun says nothing about an empty trace', explainRun([], {}) === null);
+
+  // crashed: distance dropped below 1 several steps before the end
+  const crashTrace = [
+    { tick: 0, x: 60, y: 240, heading: -1.57, distance: 3 },
+    { tick: 1, x: 60, y: 200, heading: -1.57, distance: 1.5 },
+    { tick: 2, x: 60, y: 180, heading: -1.57, distance: 0.6 },
+    { tick: 3, x: 60, y: 170, heading: -1.57, distance: 0.2 },
+  ];
+  const crash = explainRun(crashTrace, { bumped: true });
+  t('R26 explains a crash and mentions the late sensor reading',
+    /crash/i.test(crash.title) && /before/i.test(crash.detail), crash?.detail);
+
+  // missed target: closest approach was mid-run, then drove past
+  const target = { x: 60, y: 60, r: 20 };
+  const missTrace = [
+    { tick: 0, x: 60, y: 240, heading: -1.57, distance: 9 },
+    { tick: 1, x: 60, y: 120, heading: -1.57, distance: 9 },
+    { tick: 2, x: 60, y: 80, heading: -1.57, distance: 9 },
+    { tick: 3, x: 60, y: 40, heading: -1.57, distance: 9 },
+    { tick: 4, x: 200, y: 40, heading: 0, distance: 9 },
+  ];
+  const miss = explainRun(missTrace, { goal: 'reach-target', target, reachedTarget: false });
+  t('R27 explains a missed target with a closest-approach number',
+    /miss/i.test(miss.title) && /squares/i.test(miss.detail), miss?.detail);
+}
 
 console.log(pass.join('\n'));
 if (fail.length) { console.log('\n' + fail.join('\n')); console.log(`\n✗ ${fail.length} review test(s) failing.`); process.exit(1); }

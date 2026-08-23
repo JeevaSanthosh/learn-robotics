@@ -18,6 +18,7 @@ export class RobotSim {
     this.core = new SimCore({
       size: { w: canvas.width, h: canvas.height },
       walls, target, waypoints, line, start,
+      captureTrace: true, // single watched runs record a trace for "Why did that happen?"
     });
     // The animated driver renders and waits a frame between sub-steps, so the
     // learner watches the robot move; the core does the actual simulating.
@@ -63,6 +64,7 @@ export class RobotSim {
   get allVisited() { return this.core.allVisited; }
   get lineAccuracy() { return this.core.lineAccuracy; }
   get distanceFromStart() { return this.core.distanceFromStart; }
+  get trace() { return this.core.trace; }
 
   // --- rendering ---------------------------------------------------------
   draw() {
