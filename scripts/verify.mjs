@@ -19,6 +19,7 @@ import { headlessDriver } from '../src/lib/sim/runner.js';
 import { grade, evaluateGoal } from '../src/lib/sim/grade.js';
 import { validateWorld, variant } from '../src/lib/sim/world.js';
 import { SEED_MISSIONS } from '../src/content/references.mjs';
+import { ENTRY_HEADINGS, buildEntryMarkdown } from '../src/lib/portfolio.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const fails = [];
@@ -710,6 +711,75 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
       !hard.passed ? ok('C-NOSHORTCUT', `${mi.id}: a hard-coded straight-line drive fails (passed ${hard.passedCount}/${mi.seeds.length})`)
         : bad('C-NOSHORTCUT', `${mi.id}: a hard-coded drive passes ${hard.passedCount}/${mi.seeds.length} — mission is brute-forceable`);
     }
+  }
+}
+
+// ---------- Projects & portfolio (PRD §9, §16) ------------------------------
+{
+  let projects = null;
+  try { projects = JSON.parse(await readFile(path.join(ROOT, 'src/content/projects.json'), 'utf8')).projects; }
+  catch { bad('C-PROJECTS', 'src/content/projects.json missing or invalid'); }
+
+  if (projects) {
+    // C-PROJECTS: exactly 12, one per module, each fully specified; P4+ real.
+    projects.length === 12 ? ok('C-PROJECTS', '12 projects defined') : bad('C-PROJECTS', `expected 12 projects, found ${projects.length}`);
+    const ids = new Set(projects.map((p) => p.id));
+    ids.size === projects.length ? ok('C-PROJECTS', 'project ids are unique') : bad('C-PROJECTS', 'duplicate project ids');
+    for (const p of projects) {
+      const b = p.brief || {};
+      const spec = b.goal && b.metric && Array.isArray(b.constraints) && Array.isArray(b.evidence) && b.evidence.length && p.simMilestone && Array.isArray(p.rubric);
+      spec ? ok('C-PROJECTS', `${p.id} has brief, rubric, sim milestone and evidence`)
+        : bad('C-PROJECTS', `${p.id} is missing brief/metric/evidence/simMilestone/rubric`);
+      const n = Number(p.id.slice(1));
+      if (n >= 4 && !(typeof p.realMilestone === 'string' && p.realMilestone)) bad('C-PROJECTS', `${p.id} (module ${p.module}) must have a real milestone`);
+      if (n <= 3 && p.realMilestone !== null) bad('C-PROJECTS', `${p.id} is sim-only and must have realMilestone null`);
+    }
+
+    // C-RUBRIC: every rubric item maps to a checkable record field.
+    let rubricOk = true;
+    for (const p of projects) {
+      const fields = new Set();
+      for (const r of p.rubric || []) {
+        if (!r.id || !r.label || !/^[a-zA-Z][a-zA-Z0-9]*$/.test(r.field || '')) { bad('C-RUBRIC', `${p.id} rubric item needs id/label and a camelCase field`); rubricOk = false; }
+        if (fields.has(r.field)) { bad('C-RUBRIC', `${p.id} has a duplicate rubric field "${r.field}"`); rubricOk = false; }
+        fields.add(r.field);
+      }
+      if (!(p.rubric?.length >= 2 && p.rubric.length <= 4)) { bad('C-RUBRIC', `${p.id} must have 2–4 rubric items`); rubricOk = false; }
+    }
+    if (rubricOk) ok('C-RUBRIC', 'every project rubric item has a unique checkable field');
+  }
+
+  // C-TEMPLATE: the generator, the entry template and the T2 verifier agree on
+  // the section headings, so they cannot drift apart.
+  {
+    const verifierSrc = await readFile(path.join(ROOT, 'functions/api/verify-entry.js'), 'utf8');
+    const block = verifierSrc.match(/REQUIRED_HEADINGS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+    // Match a string literal delimited by matching quotes, tolerating a
+    // different quote char (e.g. an apostrophe) inside it.
+    const verifierHeadings = [...block.matchAll(/(["'`])((?:\\.|(?!\1).)*?)\1/g)].map((m) => m[2]);
+    const same = verifierHeadings.length === ENTRY_HEADINGS.length && ENTRY_HEADINGS.every((h, i) => verifierHeadings[i] === h);
+    same ? ok('C-TEMPLATE', 'entry generator and T2 verifier share the same headings')
+      : bad('C-TEMPLATE', `template headings drift: generator=${JSON.stringify(ENTRY_HEADINGS)} verifier=${JSON.stringify(verifierHeadings)}`);
+
+    const sample = { id: 'p01', module: 1, title: 'X', rigor: 1, brief: { goal: 'g', metric: 'm', constraints: ['c'], evidence: ['e'] }, rubric: [{ id: 'a', label: 'A', field: 'a' }], realMilestone: null };
+    const md = buildEntryMarkdown(sample);
+    const missingH = ENTRY_HEADINGS.filter((h) => !md.includes(`## ${h}`));
+    missingH.length ? bad('C-TEMPLATE', `generated entry is missing headings: ${missingH.join(', ')}`)
+      : ok('C-TEMPLATE', 'generated entry contains every required heading');
+  }
+
+  // C-PRIVACY: the media policy screen exists and is linked from the project pages.
+  {
+    let policyExists = false;
+    try { await readFile(path.join(ROOT, 'src/pages/media-policy.astro'), 'utf8'); policyExists = true; } catch {}
+    policyExists ? ok('C-PRIVACY', 'media policy page exists') : bad('C-PRIVACY', 'src/pages/media-policy.astro is missing');
+    const linkedFrom = [];
+    for (const f of ['src/pages/projects/index.astro', 'src/pages/projects/[id].astro']) {
+      const src = await readFile(path.join(ROOT, f), 'utf8').catch(() => '');
+      if (/\/media-policy\//.test(src)) linkedFrom.push(f);
+    }
+    linkedFrom.length >= 2 ? ok('C-PRIVACY', 'both project pages link to the media policy')
+      : bad('C-PRIVACY', 'the media policy must be linked from the projects list and each project page');
   }
 }
 

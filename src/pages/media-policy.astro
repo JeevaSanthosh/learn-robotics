@@ -1,0 +1,70 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Media policy">
+  <p class="eyebrow">Before you post anything</p>
+  <h1>Sharing photos and video safely</h1>
+
+  <section class="card">
+    <p>Your portfolio lives in <strong>your</strong> GitHub repo, on the open internet. That's the point — you own it and can show it to anyone. It also means a few rules, because you're a real person and the internet is forever.</p>
+    <ul class="policy">
+      <li>🙈 <strong>No faces</strong> — yours or anyone else's.</li>
+      <li>🏫 <strong>No school uniforms, badges, or signs</strong> that say where you are.</li>
+      <li>🏠 <strong>No house numbers, street signs, or car number plates</strong> in the background.</li>
+      <li>📍 <strong>No location metadata.</strong> Phone photos secretly store GPS coordinates. Strip them first — the tool below does it for you.</li>
+      <li>🙋 <strong>No full name</strong> unless a parent or guardian has said it's OK.</li>
+      <li>🎥 Point the camera at the <strong>robot and the floor</strong>, not the room.</li>
+    </ul>
+    <p class="muted">We never see your media. This page's tools run entirely in your browser; nothing is uploaded to us. Verification only reads the public link you choose to publish.</p>
+  </section>
+
+  <h2>Strip location data from a photo</h2>
+  <section class="card">
+    <p>Pick a photo. Your browser re-saves it without any hidden metadata (GPS, camera, timestamps). Then download the clean copy and use <em>that</em> one in your repo.</p>
+    <p>
+      <label class="btn btn-quiet">📷 Choose a photo<input type="file" id="exif-in" accept="image/*" hidden /></label>
+      <a class="btn" id="exif-out" hidden download="clean.jpg">⬇ Download clean photo</a>
+    </p>
+    <p class="status" id="exif-status" role="status"></p>
+    <div class="preview" id="exif-preview"></div>
+  </section>
+</Base>
+
+<script>
+  import { stripMetadata } from '../lib/exif.js';
+
+  const input = document.getElementById('exif-in');
+  const out = document.getElementById('exif-out');
+  const status = document.getElementById('exif-status');
+  const preview = document.getElementById('exif-preview');
+  let url = '';
+
+  input?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    status.textContent = 'Cleaning…';
+    try {
+      const clean = await stripMetadata(file, { maxSize: 1600 });
+      if (url) URL.revokeObjectURL(url);
+      url = URL.createObjectURL(clean);
+      out.href = url;
+      out.hidden = false;
+      const kb = Math.round(clean.size / 1024);
+      status.textContent = `Done — metadata removed (${kb} KB). Download it and use the clean copy.`;
+      preview.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Cleaned photo preview';
+      img.style.maxWidth = '100%';
+      img.style.borderRadius = '10px';
+      preview.appendChild(img);
+    } catch (err) {
+      status.textContent = '🤔 ' + err.message;
+    }
+  });
+</script>
+
+<style>
+  .policy { line-height: 1.9; }
+  .preview { margin-top: 1rem; }
+</style>
