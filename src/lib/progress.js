@@ -374,6 +374,101 @@ export function allGateStatus() {
   return GATES.map((g) => gateStatusFrom(s, g));
 }
 
+// --- Projects & portfolio (v2, PRD §9) -------------------------------------
+// A project moves through: not-started → sim-passed → evidence-linked → probed
+// → complete (or → revise). Each step is the learner's own record; the media
+// and the entry live in THEIR GitHub repo, never here (§9.3). The rubric object
+// holds one boolean per rubric `field` from projects.json (C-RUBRIC).
+
+function ensureProject(s, pid) {
+  return (s.projects[pid] = s.projects[pid] || {
+    status: 'not-started', simPassedAt: null, entryUrl: null,
+    verifiedAt: null, verifyTier: null, rubric: {}, probes: [], attestation: null,
+  });
+}
+
+export function projectRecord(pid) {
+  return load().projects[pid] || { status: 'not-started', rubric: {}, probes: [], attestation: null };
+}
+
+export function allProjects() {
+  return load().projects;
+}
+
+/** The sim milestone passed — the first gate; you build in the fake world first. */
+export function recordProjectSim(pid, results = null) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  if (p.status === 'not-started') p.status = 'sim-passed';
+  p.simPassedAt = p.simPassedAt || new Date().toISOString();
+  if (results) p.results = results;
+  markActive(s);
+  save(s);
+  return s;
+}
+
+/** The learner pasted their published entry URL (before verification). */
+export function linkProjectEntry(pid, url) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.entryUrl = url;
+  if (p.status === 'sim-passed' || p.status === 'not-started') p.status = 'evidence-linked';
+  save(s);
+  return s;
+}
+
+/** Record the outcome of T2 structural verification (or self-attestation tier). */
+export function setProjectVerified(pid, tier) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.verifiedAt = new Date().toISOString();
+  p.verifyTier = tier;
+  save(s);
+  return s;
+}
+
+/** Tick (or untick) one rubric field. Keys come from projects.json rubric[].field. */
+export function setProjectRubric(pid, field, value) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.rubric[field] = !!value;
+  save(s);
+  return s;
+}
+
+/** Store the tutor's design-review probes and the learner's answers (T3, §14.3). */
+export function recordProjectProbes(pid, probes) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.probes = probes;
+  if (probes.length && probes.every((x) => x.a && x.a.trim())) {
+    if (p.status === 'evidence-linked' || p.status === 'sim-passed') p.status = 'probed';
+  }
+  save(s);
+  return s;
+}
+
+/** T4: a human saw it work, or the learner self-attests for a private repo. */
+export function setProjectAttestation(pid, attestation) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.attestation = attestation;
+  save(s);
+  return s;
+}
+
+/** Mark complete (all rubric items ticked + probes answered), or send back to revise. */
+export function setProjectStatus(pid, status) {
+  const s = load();
+  const p = ensureProject(s, pid);
+  p.status = status;
+  if (status === 'complete') p.completedAt = new Date().toISOString();
+  markActive(s);
+  awardBadges(s);
+  save(s);
+  return s;
+}
+
 // --- Light gamification -----------------------------------------------------
 function awardBadges(s) {
   const has = (b) => s.badges.includes(b);

@@ -1,0 +1,239 @@
+---
+import Base from '../../layouts/Base.astro';
+import projectsData from '../../content/projects.json';
+
+export function getStaticPaths() {
+  return projectsData.projects.map((p) => ({ params: { id: p.id }, props: { project: p } }));
+}
+const { project } = Astro.props;
+const num = project.id.slice(1);
+---
+<Base title={project.title}>
+  <p class="eyebrow"><a href="/projects/">← All projects</a> · Project {num} · Module {project.module}</p>
+  <div class="proj-head">
+    <h1>{project.title}</h1>
+    <span class="status-chip" id="status">—</span>
+  </div>
+  <p class="rigor-chip">Rigor R{project.rigor} · {project.realMilestone ? 'sim → real build' : 'simulator only'} · Proof tier {project.proofTier}+</p>
+
+  <section class="card">
+    <h2>The brief</h2>
+    <p>{project.brief.goal}</p>
+    <p><strong>Success metric:</strong> {project.brief.metric}</p>
+    {project.brief.constraints?.length > 0 && (
+      <>
+        <p class="eyebrow">Constraints</p>
+        <ul>{project.brief.constraints.map((c) => <li>{c}</li>)}</ul>
+      </>
+    )}
+    <p class="eyebrow">Evidence to capture</p>
+    <ul>{project.brief.evidence.map((e) => <li>{e}</li>)}</ul>
+  </section>
+
+  <ol class="steps">
+    <li class="card step">
+      <h2>1 · Pass the sim milestone</h2>
+      <p>{project.simMilestone}</p>
+      <p class="muted">Build it in the simulator on the module page first — you don't take anything to the real world until it works in the fake one.</p>
+      <button class="btn" id="sim-done">Mark sim milestone passed</button>
+    </li>
+
+    <li class="card step">
+      <h2>2 · Generate your portfolio entry</h2>
+      <p>This makes a ready-to-commit <code>README.md</code> for <code>projects/{project.id}-{project.title.toLowerCase().replace(/\s+/g, '-')}/</code> in your repo — pre-filled with the brief, the rubric checklist, and your results. You fill in the "why does this work?" parts.</p>
+      <p>
+        <button class="btn" id="gen">Generate entry</button>
+        <a class="btn btn-quiet" id="zip" hidden download>⬇ Download .zip</a>
+        <button class="btn btn-quiet" id="copy" hidden>Copy markdown</button>
+      </p>
+      <pre class="entry-out" id="entry" hidden><code></code></pre>
+      <p class="muted">Then commit it to your GitHub portfolio repo. New to git? The template repo has a one-time walkthrough. <a href="/media-policy/">Read the media policy</a> before adding any photos.</p>
+    </li>
+
+    <li class="card step">
+      <h2>3 · Link and verify it</h2>
+      <p>Paste the <strong>raw</strong> URL of your entry's README (e.g. <code>raw.githubusercontent.com/you/repo/main/projects/…/README.md</code>).</p>
+      <p class="row">
+        <input type="url" id="entry-url" placeholder="https://raw.githubusercontent.com/…/README.md" />
+        <button class="btn" id="verify">Verify</button>
+      </p>
+      <p class="status" id="verify-status" role="status"></p>
+      <details class="attest">
+        <summary>Private repo? Self-attest instead.</summary>
+        <p>A private repo is fully supported and worth exactly as much. Tick this to record it as done on your honour — the honesty is for you.</p>
+        <label><input type="checkbox" id="attest-box" /> I am recording this entry as real and complete.</label>
+      </details>
+    </li>
+
+    <li class="card step">
+      <h2>4 · The rubric</h2>
+      <p>Tick these off honestly as your entry covers them.</p>
+      <ul class="rubric" id="rubric">
+        {project.rubric.map((r) => (
+          <li><label><input type="checkbox" data-field={r.field} /> {r.label}</label></li>
+        ))}
+      </ul>
+    </li>
+
+    <li class="card step">
+      <h2>5 · Design review</h2>
+      <p>Two questions about your writeup. Answering them well is the point — a real reviewer would ask exactly these.</p>
+      <button class="btn btn-quiet" id="probe">Get review questions</button>
+      <div id="probes" hidden></div>
+      <button class="btn" id="save-probes" hidden>Save answers</button>
+    </li>
+  </ol>
+
+  <section class="card finish">
+    <button class="btn" id="complete" disabled>Mark project complete</button>
+    <p class="status" id="complete-status" role="status"></p>
+  </section>
+
+  <div id="project-data" data-project={JSON.stringify(project)} hidden></div>
+</Base>
+
+<script>
+  import {
+    projectRecord, recordProjectSim, linkProjectEntry, setProjectVerified,
+    setProjectRubric, recordProjectProbes, setProjectAttestation, setProjectStatus,
+  } from '../../lib/progress.js';
+  import { buildEntryMarkdown, entryFiles, buildZip, designReviewQuestions } from '../../lib/portfolio.js';
+
+  const project = JSON.parse(document.getElementById('project-data').dataset.project);
+  const pid = project.id;
+  const $ = (id) => document.getElementById(id);
+
+  const LABELS = {
+    'not-started': 'Not started', 'sim-passed': 'Sim passed', 'evidence-linked': 'Entry linked',
+    'probed': 'Reviewed', 'complete': '✓ Complete', 'revise': 'Revise',
+  };
+
+  function results() {
+    const rec = projectRecord(pid);
+    return { projectId: pid, title: project.title, module: project.module, rigor: project.rigor,
+      simPassedAt: rec.simPassedAt || null, generatedAt: new Date().toISOString() };
+  }
+
+  function paint() {
+    const rec = projectRecord(pid);
+    $('status').textContent = LABELS[rec.status] || rec.status;
+    $('status').dataset.state = rec.status;
+    // rubric ticks
+    for (const box of document.querySelectorAll('#rubric input')) box.checked = !!rec.rubric[box.dataset.field];
+    if (rec.entryUrl) $('entry-url').value = rec.entryUrl;
+    if (rec.attestation) $('attest-box').checked = true;
+    // completion gating
+    const rubricAll = project.rubric.every((r) => rec.rubric[r.field]);
+    const probed = rec.probes?.length && rec.probes.every((x) => x.a && x.a.trim());
+    const proven = rec.verifyTier || rec.attestation;
+    $('complete').disabled = !(rubricAll && probed && proven) || rec.status === 'complete';
+    $('complete-status').textContent = rec.status === 'complete' ? '🎉 Complete — it\'s in your portfolio.'
+      : (rubricAll && probed && proven) ? 'Ready to mark complete.'
+      : `To finish: ${[!rubricAll && 'tick every rubric item', !probed && 'answer the review questions', !proven && 'verify or self-attest the entry'].filter(Boolean).join(', ')}.`;
+  }
+
+  $('sim-done').addEventListener('click', () => { recordProjectSim(pid, results()); paint(); });
+
+  // --- generate entry ---
+  let lastMd = '';
+  $('gen').addEventListener('click', () => {
+    const data = { results: results() };
+    lastMd = buildEntryMarkdown(project, data);
+    $('entry').hidden = false;
+    $('entry').querySelector('code').textContent = lastMd;
+    $('copy').hidden = false;
+    const blob = buildZip(entryFiles(project, data));
+    const url = URL.createObjectURL(blob);
+    $('zip').href = url;
+    $('zip').download = `${pid}-${project.title.toLowerCase().replace(/\s+/g, '-')}.zip`;
+    $('zip').hidden = false;
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(lastMd); $('copy').textContent = 'Copied ✓'; setTimeout(() => ($('copy').textContent = 'Copy markdown'), 1500); }
+    catch { $('copy').textContent = 'Select the text above'; }
+  });
+
+  // --- verify (T2) ---
+  $('verify').addEventListener('click', async () => {
+    const url = $('entry-url').value.trim();
+    if (!url) { $('verify-status').textContent = 'Paste your entry\'s raw URL first.'; return; }
+    linkProjectEntry(pid, url);
+    $('verify-status').textContent = 'Checking your entry…';
+    try {
+      const res = await fetch('/api/verify-entry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
+      const data = await res.json();
+      if (data.ok) {
+        setProjectVerified(pid, 'T2');
+        $('verify-status').textContent = '✅ Verified (T2): your entry has every section, media, and a filled rubric. It checks you wrote it — the truth is yours to keep honest.';
+      } else if (data.error) {
+        $('verify-status').textContent = '🤔 ' + data.error;
+      } else {
+        const miss = [!data.checks?.headings && `missing sections: ${(data.missing || []).join(', ')}`, !data.checks?.media && 'no photo/video linked', !data.checks?.rubric && 'rubric checklist not ticked'].filter(Boolean).join('; ');
+        $('verify-status').textContent = '📝 Almost — ' + miss + '.';
+      }
+    } catch {
+      $('verify-status').textContent = 'Offline — you can self-attest below, and it will verify when you\'re back online.';
+    }
+    paint();
+  });
+
+  $('attest-box').addEventListener('change', (e) => {
+    setProjectAttestation(pid, e.target.checked ? { at: new Date().toISOString(), note: 'self-attested' } : null);
+    if (e.target.checked) setProjectVerified(pid, 'T4');
+    paint();
+  });
+
+  // --- rubric ---
+  for (const box of document.querySelectorAll('#rubric input'))
+    box.addEventListener('change', () => { setProjectRubric(pid, box.dataset.field, box.checked); paint(); });
+
+  // --- design review (T3) ---
+  $('probe').addEventListener('click', () => {
+    const rec = projectRecord(pid);
+    const qs = designReviewQuestions(project);
+    const host = $('probes');
+    host.hidden = false;
+    host.innerHTML = '';
+    qs.forEach((q, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'probe';
+      const label = document.createElement('label');
+      label.textContent = q;
+      const ta = document.createElement('textarea');
+      ta.rows = 3; ta.dataset.q = q;
+      ta.value = rec.probes?.[i]?.a || '';
+      wrap.append(label, ta);
+      host.appendChild(wrap);
+    });
+    $('save-probes').hidden = false;
+  });
+  $('save-probes').addEventListener('click', () => {
+    const probes = [...document.querySelectorAll('#probes textarea')].map((ta) => ({ q: ta.dataset.q, a: ta.value }));
+    recordProjectProbes(pid, probes);
+    $('save-probes').textContent = 'Saved ✓';
+    setTimeout(() => ($('save-probes').textContent = 'Save answers'), 1500);
+    paint();
+  });
+
+  $('complete').addEventListener('click', () => { setProjectStatus(pid, 'complete'); paint(); });
+
+  paint();
+  window.addEventListener('lr-progress', paint);
+</script>
+
+<style>
+  .proj-head { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+  .status-chip { font-size: 0.85rem; padding: 0.15rem 0.6rem; border-radius: 999px; border: 1px solid var(--grid, #d9e4ee); }
+  .status-chip[data-state="complete"] { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 14%, transparent); }
+  .rigor-chip { color: var(--ink-soft, #4a5d74); font-size: 0.9rem; }
+  .steps { list-style: none; padding: 0; margin: 1.2rem 0; display: flex; flex-direction: column; gap: 1rem; counter-reset: none; }
+  .step h2 { margin-top: 0; }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .row input[type="url"] { flex: 1; min-width: 16rem; padding: 0.4rem 0.6rem; }
+  .entry-out { max-height: 22rem; overflow: auto; background: var(--card-2, #0d1a2b0a); padding: 0.8rem; border-radius: 8px; }
+  .rubric { list-style: none; padding: 0; line-height: 2; }
+  .attest { margin-top: 0.6rem; }
+  .probe { margin: 0.6rem 0; display: flex; flex-direction: column; gap: 0.3rem; }
+  .probe textarea { width: 100%; font: inherit; padding: 0.5rem; }
+  .finish { text-align: center; }
+</style>

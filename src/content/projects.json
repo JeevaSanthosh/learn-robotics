@@ -1,0 +1,332 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "p01",
+      "module": 1,
+      "title": "Signal lamp",
+      "rigor": 1,
+      "brief": {
+        "goal": "Program the robot's LED and buzzer to send a message that a stranger could read without you explaining it — an SOS, a countdown to launch, or a mood that changes.",
+        "metric": "Someone watching the sim can name what the pattern is trying to say, and you can point to the part of the program that makes each beat.",
+        "constraints": [
+          "Sim only — no hardware yet",
+          "Use only the LED, buzzer, and wait blocks you have met",
+          "The pattern must repeat cleanly, not run once and stop"
+        ],
+        "evidence": [
+          "The sim run captured (screen recording or screenshot)",
+          "The program exported from the editor",
+          "One or two sentences saying what the pattern communicates"
+        ]
+      },
+      "rubric": [
+        { "id": "runs", "label": "The pattern runs in the simulator", "field": "runs" },
+        { "id": "meaning", "label": "You explained what it communicates", "field": "meaning" }
+      ],
+      "simMilestone": "LED pattern verified in the simulator",
+      "realMilestone": null,
+      "proofTier": "T1"
+    },
+    {
+      "id": "p02",
+      "module": 2,
+      "title": "Polygon plotter",
+      "rigor": 1,
+      "brief": {
+        "goal": "Write one program that draws a triangle, a square, a hexagon, and an octagon — and switches between them by changing a single number, not by rewriting the code.",
+        "metric": "Setting the number of sides to 3, 4, 6, and 8 produces a clean closed shape each time, with no leftover gap or overlap.",
+        "constraints": [
+          "Sim only, pen down",
+          "Exactly one number changes between shapes — everything else stays put",
+          "Use a loop; do not unroll the sides by hand"
+        ],
+        "evidence": [
+          "A table mapping each side count to the shape and turn angle it produced",
+          "A short explanation of the 360 ÷ n relationship in your own words",
+          "The four sim drawings"
+        ]
+      },
+      "rubric": [
+        { "id": "fourShapes", "label": "All four shapes draw from one changed number", "field": "fourShapes" },
+        { "id": "ratioExplained", "label": "You explained why the turn is 360 ÷ n", "field": "ratioExplained" }
+      ],
+      "simMilestone": "Four shapes drawn from one parameter in the simulator",
+      "realMilestone": null,
+      "proofTier": "T1"
+    },
+    {
+      "id": "p03",
+      "module": 3,
+      "title": "Don't crash",
+      "rigor": 2,
+      "brief": {
+        "goal": "Write one program that keeps the robot moving without hitting anything, and make it good enough that it survives arenas you have never seen — not just the one you practised on.",
+        "metric": "Runs for 60 simulated seconds with no collision in at least 4 of 5 randomised arenas.",
+        "constraints": [
+          "Sim only, graded across 5 seeded worlds",
+          "A fixed move-turn sequence will fail — you must react to the distance sensor",
+          "Choose one threshold and use it deliberately"
+        ],
+        "evidence": [
+          "The pass/fail result for each of the 5 seeds",
+          "A written justification of why your threshold is the number it is, not something bigger or smaller",
+          "A note on which seed was hardest and why"
+        ]
+      },
+      "rubric": [
+        { "id": "seedsPassed", "label": "Survives at least 4 of 5 seeded arenas", "field": "seedsPassed" },
+        { "id": "thresholdJustified", "label": "You justified your chosen threshold", "field": "thresholdJustified" }
+      ],
+      "simMilestone": "Survives at least 4 of 5 seeded arenas for 60 seconds",
+      "realMilestone": null,
+      "proofTier": "T1"
+    },
+    {
+      "id": "p04",
+      "module": 4,
+      "title": "Strong or fast",
+      "rigor": 2,
+      "brief": {
+        "goal": "On the real chassis, find out what you trade away for speed: time a 1 m run at three speed settings and see how steep a slope the robot can still climb.",
+        "metric": "You have a filled measurement table for all three speeds plus the incline test, and your written prediction is recorded before any measurement was taken.",
+        "constraints": [
+          "Real hardware — Kit 1 chassis",
+          "Predict every result in writing before you measure it",
+          "Same 1 m course and same battery charge for all three speed runs"
+        ],
+        "evidence": [
+          "A photo of your measurement setup",
+          "A table of predicted vs actual time for each speed and the incline result",
+          "An explanation of where prediction and reality disagreed, and why"
+        ]
+      },
+      "rubric": [
+        { "id": "photo", "label": "Photo of the real measurement setup", "field": "photo" },
+        { "id": "measurementTable", "label": "Completed measurement table", "field": "measurementTable" },
+        { "id": "predictionExplained", "label": "Prediction recorded first and the gap explained", "field": "predictionExplained" }
+      ],
+      "simMilestone": "Drivetrain speed-vs-torque comparison verified in the simulator",
+      "realMilestone": "Time three 1 m runs at different speeds and one incline test on the real chassis.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p05",
+      "module": 5,
+      "title": "Two-mode robot",
+      "rigor": 3,
+      "brief": {
+        "goal": "Build a robot with two clear modes: it patrols until it detects something, then chases it, then returns to patrolling when it loses it — built as an explicit state machine, not a tangle of ifs.",
+        "metric": "The robot switches modes correctly in the sim across seeded worlds and again on the real micro:bit chassis, and every mode change in the run matches an arrow on your diagram.",
+        "constraints": [
+          "Real hardware — micro:bit robot",
+          "Structure must be an explicit state machine with named states",
+          "Each transition must have a condition you can point to"
+        ],
+        "evidence": [
+          "A hand-drawn or Mermaid state diagram of the modes and transitions",
+          "A video of the real robot patrolling, chasing, and recovering",
+          "A note confirming the diagram matches the built program"
+        ]
+      },
+      "rubric": [
+        { "id": "stateDiagram", "label": "State diagram matches the built program", "field": "stateDiagram" },
+        { "id": "video", "label": "Video shows all three modes working", "field": "video" }
+      ],
+      "simMilestone": "State machine passes seeded worlds in the simulator",
+      "realMilestone": "Run the patrol-chase-recover state machine on the real micro:bit robot.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p06",
+      "module": 6,
+      "title": "Port it",
+      "rigor": 3,
+      "brief": {
+        "goal": "Take your \"Don't crash\" program, rewrite it in text code, and get it running on the real robot so it dodges a real obstacle — then explain what reality did that the simulator never did.",
+        "metric": "The typed program passes the sim milestone and the real robot avoids a physical obstacle on video, with a written account of every sim-vs-real difference you noticed.",
+        "constraints": [
+          "Real hardware; program written in text, not blocks",
+          "Behaviour must come from the same logic as P3, ported not redesigned",
+          "Test with a real obstacle, not a hand waved in front of it"
+        ],
+        "evidence": [
+          "A video of the real robot avoiding a real obstacle",
+          "A writeup comparing simulator behaviour to real behaviour and why they differ",
+          "The ported text program"
+        ]
+      },
+      "rubric": [
+        { "id": "video", "label": "Video shows the real robot avoiding an obstacle", "field": "video" },
+        { "id": "simVsReal", "label": "You compared simulator and real behaviour", "field": "simVsReal" }
+      ],
+      "simMilestone": "P3 rewritten in text passes the sim grader",
+      "realMilestone": "Flash the ported text program and have the real robot avoid a physical obstacle.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p07",
+      "module": 7,
+      "title": "Race the line",
+      "rigor": 4,
+      "brief": {
+        "goal": "Tune a line follower on the real robot until it is both accurate and fast — and keep a log of every change so the tuning itself becomes the thing you can prove you did.",
+        "metric": "Hits the target line-accuracy and the time target on the real course, backed by a tuning log showing the gains you tried and what each one changed.",
+        "constraints": [
+          "Real hardware — real line course",
+          "Change one knob at a time and record the outcome before the next change",
+          "Both the accuracy target and the time target must be met, not one or the other"
+        ],
+        "evidence": [
+          "The tuning log: every gain tried, what happened, what you changed next",
+          "A video of a passing run",
+          "The final accuracy and time figures"
+        ]
+      },
+      "rubric": [
+        { "id": "tuningLog", "label": "Tuning log records every gain and outcome", "field": "tuningLog" },
+        { "id": "video", "label": "Video shows a run meeting both targets", "field": "video" }
+      ],
+      "simMilestone": "Line accuracy reaches the target in the simulator",
+      "realMilestone": "Tune the line follower to hit both accuracy and time targets on the real course.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p08",
+      "module": 8,
+      "title": "Return to base",
+      "rigor": 4,
+      "brief": {
+        "goal": "Send the real robot out on a route and bring it back to where it started, within a tolerance you set yourself — three times — then account for exactly where the leftover error came from.",
+        "metric": "All three out-and-back runs land within your stated tolerance of the start, and your error budget adds up to roughly the error you actually measured.",
+        "constraints": [
+          "Real hardware; three separate runs",
+          "State your tolerance target and justify it before running",
+          "Measure the real end-position error each time — do not estimate it by eye"
+        ],
+        "evidence": [
+          "The measured end-position error for each of the three runs",
+          "An estimated error budget naming where each bit of drift came from",
+          "Your stated tolerance target and why you chose it"
+        ]
+      },
+      "rubric": [
+        { "id": "measuredError", "label": "End-position error measured for each run", "field": "measuredError" },
+        { "id": "errorBudget", "label": "Error budget accounts for the drift", "field": "errorBudget" }
+      ],
+      "simMilestone": "Returns within tolerance across seeded worlds in the simulator",
+      "realMilestone": "Complete three measured out-and-back runs on the real robot within your stated tolerance.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p09",
+      "module": 9,
+      "title": "Maze solver",
+      "rigor": 4,
+      "brief": {
+        "goal": "Write one program that can solve mazes it has never seen — ten unseen seeds — and does it with paths that are close to the shortest possible, not just paths that eventually work.",
+        "metric": "Solves at least 8 of 10 unseen maze seeds, scored on how close your path length is to the optimal path.",
+        "constraints": [
+          "Graded on unseen seeds you cannot practise on",
+          "One program must handle all ten — no per-maze tweaks",
+          "Efficiency counts: a solution that wanders scores below one that plans"
+        ],
+        "evidence": [
+          "The solve/fail result for each of the 10 seeds",
+          "The path-efficiency ratio against the optimal path length",
+          "A photo or video if you built the tape maze on the floor (stretch)"
+        ]
+      },
+      "rubric": [
+        { "id": "seedsSolved", "label": "Solves at least 8 of 10 unseen mazes", "field": "seedsSolved" },
+        { "id": "pathEfficiency", "label": "Path efficiency reported against optimal", "field": "pathEfficiency" }
+      ],
+      "simMilestone": "Solves at least 8 of 10 unseen maze seeds in the simulator",
+      "realMilestone": "Solve a tape maze on the floor with the real robot (stretch goal), captured on video.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p10",
+      "module": 10,
+      "title": "Follow the colour",
+      "rigor": 4,
+      "brief": {
+        "goal": "Make the robot track a coloured target with its camera and keep it centred as it moves — then go hunting for the ways it breaks, because knowing when vision fails is half the skill.",
+        "metric": "Keeps the target inside the centre band above the tracking threshold in good conditions, and you have documented five distinct conditions that defeat it.",
+        "constraints": [
+          "Real hardware — camera tracking",
+          "Working once in good light is not passing",
+          "Each failure in the catalogue must be a genuinely different cause"
+        ],
+        "evidence": [
+          "A video of the robot tracking the target",
+          "A failure catalogue of five conditions that break it, each with a photo",
+          "A note on which failures you could fix and which are fundamental"
+        ]
+      },
+      "rubric": [
+        { "id": "video", "label": "Video shows the target tracked and centred", "field": "video" },
+        { "id": "failureCatalogue", "label": "Five photographed failure conditions catalogued", "field": "failureCatalogue" }
+      ],
+      "simMilestone": "Target tracked above the threshold in the simulator",
+      "realMilestone": "Track a coloured target with the real camera and keep it centred on video.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p11",
+      "module": 11,
+      "title": "Teach it something",
+      "rigor": 4,
+      "brief": {
+        "goal": "Pick a 2-3 class problem the robot can sense, collect your own data, train a tiny classifier, and report how well it really does on data it was never trained on — honestly.",
+        "metric": "You report held-out accuracy with a confusion matrix from a proper train/test split; an honest low number scores higher here than an inflated high one.",
+        "constraints": [
+          "Real hardware for data collection",
+          "Any result without a train/test split is an automatic revise-and-resubmit",
+          "Report accuracy on held-out data only, never on training data"
+        ],
+        "evidence": [
+          "A description of the dataset: classes, features, how many samples",
+          "A confusion matrix from the held-out test set",
+          "The honest test accuracy, with a note on what it gets wrong"
+        ]
+      },
+      "rubric": [
+        { "id": "datasetDescribed", "label": "Dataset, classes, and features described", "field": "datasetDescribed" },
+        { "id": "confusionMatrix", "label": "Confusion matrix from held-out data", "field": "confusionMatrix" },
+        { "id": "honestAccuracy", "label": "Honest held-out accuracy reported", "field": "honestAccuracy" }
+      ],
+      "simMilestone": "Classifier reaches the threshold on held-out data in the simulator",
+      "realMilestone": "Collect a labelled dataset from the real robot and train a classifier on it.",
+      "proofTier": "T2"
+    },
+    {
+      "id": "p12",
+      "module": 12,
+      "title": "Capstone",
+      "rigor": 5,
+      "brief": {
+        "goal": "Choose your own robot to build. Write the brief yourself against the template — goal, success metric, constraints, test plan — get it accepted, then build it in sim, build it for real, and show it works.",
+        "metric": "Your brief is accepted against the rubric before you build, and the finished robot meets the success metric you set for it under your own test plan.",
+        "constraints": [
+          "Your brief must be accepted before building starts",
+          "Deliver both a sim prototype and a real build",
+          "You are held to the standard you set, not one we set"
+        ],
+        "evidence": [
+          "A design document: goal, metric, constraints, test plan, results",
+          "A 2-minute demo video of the working build",
+          "A reflection on the whole year: what you learned and what you would do differently"
+        ]
+      },
+      "rubric": [
+        { "id": "designDoc", "label": "Design doc with brief, test plan, and results", "field": "designDoc" },
+        { "id": "demoVideo", "label": "Two-minute demo video of the build", "field": "demoVideo" },
+        { "id": "reflection", "label": "Year-end reflection written", "field": "reflection" }
+      ],
+      "simMilestone": "Capstone prototype verified in the simulator",
+      "realMilestone": "Build, tune, and demonstrate your self-specified capstone robot on real hardware.",
+      "proofTier": "T2"
+    }
+  ]
+}

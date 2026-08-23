@@ -1,0 +1,62 @@
+---
+import Base from '../../layouts/Base.astro';
+import projectsData from '../../content/projects.json';
+const projects = projectsData.projects;
+---
+<Base title="Projects">
+  <p class="eyebrow">What you build and keep</p>
+  <h1>Your twelve projects</h1>
+  <p class="lede">One project a month. Each one you design, build in the simulator, take to real hardware (from month 4), and write up in your own portfolio repo — with evidence, in a repository with your name on it. This is the thing you'll show people.</p>
+
+  <p><a class="btn btn-quiet" href="/media-policy/">📷 Read the media policy first</a></p>
+
+  <div class="proj-grid">
+    {projects.map((p) => (
+      <a class="proj-card card" href={`/projects/${p.id}/`} data-pid={p.id}>
+        <div class="proj-top">
+          <span class="eyebrow">Project {p.id.slice(1)} · Module {p.module}</span>
+          <span class="status-chip" data-status>—</span>
+        </div>
+        <h3>{p.title}</h3>
+        <p class="proj-goal">{p.brief.goal}</p>
+        <span class="rigor-chip">R{p.rigor}{p.realMilestone ? ' · real build' : ' · sim'}</span>
+      </a>
+    ))}
+  </div>
+</Base>
+
+<script>
+  import { allProjects } from '../../lib/progress.js';
+
+  const LABELS = {
+    'not-started': 'Not started', 'sim-passed': 'Sim passed', 'evidence-linked': 'Entry linked',
+    'probed': 'Reviewed', 'complete': '✓ Complete', 'revise': 'Revise',
+  };
+  function paint() {
+    const rec = allProjects();
+    for (const card of document.querySelectorAll('.proj-card')) {
+      const st = rec[card.dataset.pid]?.status || 'not-started';
+      const chip = card.querySelector('[data-status]');
+      chip.textContent = LABELS[st] || st;
+      chip.dataset.state = st;
+      card.classList.toggle('done', st === 'complete');
+    }
+  }
+  paint();
+  window.addEventListener('lr-progress', paint);
+</script>
+
+<style>
+  .lede { max-width: 60ch; }
+  .proj-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; margin-top: 1.2rem; }
+  @media (min-width: 640px) { .proj-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 980px) { .proj-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .proj-card { display: flex; flex-direction: column; gap: 0.4rem; text-decoration: none; color: inherit; }
+  .proj-card:hover { border-color: var(--wire, #3e6c9e); }
+  .proj-card.done { border-color: var(--go, #2fa36b); }
+  .proj-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  .proj-goal { color: var(--ink-soft, #4a5d74); font-size: 0.95rem; flex: 1; }
+  .status-chip { font-size: 0.78rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--grid, #d9e4ee); white-space: nowrap; }
+  .status-chip[data-state="complete"] { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 14%, transparent); }
+  .rigor-chip { font-size: 0.78rem; color: var(--ink-soft, #4a5d74); }
+</style>
