@@ -32,6 +32,7 @@ const {
   unseen = '',                  // 'true' → grade on seeds the learner never watched (R4+)
   scoreBy = '',                 // scored metric name (R4+)
   fixedWorld = '',              // rigor honesty: this mission grades in one tuned arena
+  textMode = '',                // enable the "edit as text" (MicroPython) handoff (§8.7, M6)
 } = Astro.props;
 ---
 <section
@@ -73,6 +74,12 @@ const {
   <div class="lab-grid">
     <div class="editor-side">
       <div class="blockly-host" aria-label="Block editor"></div>
+      {textMode && (
+        <div class="text-host" hidden>
+          <textarea class="text-editor" spellcheck="false" aria-label="MicroPython editor"></textarea>
+          <p class="text-err" role="status"></p>
+        </div>
+      )}
       <div class="block-help" hidden>
         <p class="eyebrow bh-name"></p>
         <p class="bh-tip"></p>
@@ -103,6 +110,7 @@ const {
           Auto-run as I build
         </label>
         <button class="btn btn-quiet btn-sm code-toggle" aria-expanded="false">&lt;/&gt; Show real code</button>
+        {textMode && <button class="btn btn-quiet btn-sm text-toggle" aria-pressed="false">⌨ Edit as text</button>}
         <button class="btn btn-quiet btn-sm share">🔗 Share</button>
         <button class="btn btn-quiet btn-sm expand" aria-pressed="false" title="Give the block editor the whole screen (Esc to exit)">⛶ Bigger editor</button>
       </div>
@@ -134,6 +142,8 @@ const {
   import { getWorld } from '../lib/worlds.js';
   import { grade } from '../lib/sim/grade.js';
   import { variant } from '../lib/sim/world.js';
+  import { parse, PyError } from '../lib/pyparse.js';
+  import { runPython, RuntimeError } from '../lib/pyrun.js';
 
   defineRobotBlocks();
 
@@ -447,6 +457,39 @@ const {
       status.textContent = text;
     }
 
+    // ---- text mode: the MicroPython handoff (§8.7, M6) ------------------
+    // "Blocks were the training wheels." One-way by design — you sketch in
+    // blocks, switch to text, and from there you're writing the real thing.
+    const textHost = root.querySelector('.text-host');
+    const textEditor = root.querySelector('.text-editor');
+    const textErr = root.querySelector('.text-err');
+    const textToggle = root.querySelector('.text-toggle');
+    let textOn = false;
+
+    textToggle?.addEventListener('click', () => {
+      textOn = !textOn;
+      if (textOn && !textEditor.value.trim()) textEditor.value = (lastPy || 'robot.move_forward(2)\n');
+      textHost.hidden = !textOn;
+      root.querySelector('.blockly-host').hidden = textOn;
+      root.querySelector('.block-help').hidden = true;
+      autoBox.parentElement.style.display = textOn ? 'none' : '';
+      textToggle.setAttribute('aria-pressed', String(textOn));
+      textToggle.textContent = textOn ? '🧩 Back to blocks' : '⌨ Edit as text';
+      if (!textOn) requestAnimationFrame(() => Blockly.svgResize(ws));
+    });
+
+    function showTextError(e) {
+      if (!textErr) return;
+      textErr.textContent = (e instanceof PyError || e instanceof RuntimeError)
+        ? `Line ${e.line}${e.col ? ':' + e.col : ''} — ${e.message}`
+        : (e.message || String(e));
+    }
+
+    /** Drive the sim from whichever editor is active (blocks or text). */
+    function runProgram(driver) {
+      return textOn ? runPython(parse(textEditor.value), driver) : new BlockRunner(ws, driver).run();
+    }
+
     async function execute(isAuto) {
       if (running) return;
       if (predictKind && prediction === null) {
@@ -457,9 +500,10 @@ const {
       runBtn.disabled = true;
       root.classList.add('is-running');
       setStatus(isAuto ? 'Auto-running…' : 'Running…');
+      if (textErr) textErr.textContent = '';
       sim.reset();
       try {
-        await new BlockRunner(ws, sim).run();
+        await runProgram(sim);
         hasRun = true;
         scorePrediction();
         if (seeded) await runSeedGrade();
@@ -468,6 +512,7 @@ const {
         if (whyBtn) whyBtn.hidden = false;
       } catch (err) {
         setStatus('🤔 ' + err.message);
+        if (textOn) showTextError(err);
       } finally {
         running = false;
         runBtn.disabled = false;
@@ -479,19 +524,19 @@ const {
     async function runSeedGrade() {
       // Blocks failing a required concept or a ban should still be caught before
       // celebrating, exactly as in the single-world path.
-      const missing = missingRequired();
+      const missing = textOn ? [] : missingRequired();
       if (missing.length) {
         setStatus('👀 It ran — but this mission is about ' + missing.map((t) => FRIENDLY[t] || t).join(' and ') + '. Use that, and it counts.');
         return;
       }
-      if (banned.length) {
+      if (!textOn && banned.length) {
         const usedTypes = new Set(ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type));
         const hit = banned.filter((t) => usedTypes.has(t));
         if (hit.length) { setStatus('🚫 This challenge bans ' + hit.map((t) => FRIENDLY[t] || t).join(' and ') + '.'); return; }
       }
 
       setStatus(`Grading across ${seedCount} worlds…`);
-      const runFn = (driver) => new BlockRunner(ws, driver).run();
+      const runFn = (driver) => runProgram(driver);
       const result = await grade(runFn, worldSpec, { seeds: seedList, mustPass, goal, unseen });
       renderSeedChips(result.results);
       root.querySelector('.seeds').hidden = false;
@@ -628,6 +673,7 @@ const {
     const reviewList = root.querySelector('.review-list');
 
     function paintReview() {
+      if (textOn) { reviewBox.hidden = true; return; } // review reads blocks; text is on its own
       let items = [];
       try {
         items = reviewProgram(Blockly.serialization.workspaces.save(ws), {
@@ -660,7 +706,7 @@ const {
       }
       const outcome = outcomeMet();
       if (!outcome.done) { setStatus(outcome.hint); return; }
-      if (maxBlocks) {
+      if (!textOn && maxBlocks) {
         const used = ws.getAllBlocks(false).filter((b) => b.isEnabled() && b.type !== 'robot_start').length;
         if (used > maxBlocks) {
           setStatus(
@@ -670,7 +716,7 @@ const {
           return;
         }
       }
-      if (banned.length) {
+      if (!textOn && banned.length) {
         const usedTypes = new Set(ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type));
         const hitBanned = banned.filter((t) => usedTypes.has(t));
         if (hitBanned.length) {
@@ -682,7 +728,7 @@ const {
           return;
         }
       }
-      const missing = missingRequired();
+      const missing = textOn ? [] : missingRequired();
       if (missing.length) {
         setStatus(
           '👀 The robot did it — but this mission is about ' +
@@ -794,6 +840,17 @@ const {
   .seed-chip.pass { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 14%, transparent); }
   .seed-chip.fail { border-color: var(--stop, #d1495b); background: color-mix(in srgb, var(--stop, #d1495b) 12%, transparent); }
   .seed-chip:hover { outline: 2px solid var(--wire, #3e6c9e); }
+
+  /* text mode (MicroPython editor) */
+  .text-host { display: flex; flex-direction: column; gap: 0.4rem; }
+  .text-editor {
+    width: 100%; min-height: 320px; resize: vertical;
+    font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.95rem; line-height: 1.5;
+    padding: 0.7rem 0.8rem; border: 1px solid var(--grid, #d9e4ee); border-radius: 8px;
+    tab-size: 4; background: var(--card, #fff); color: inherit;
+  }
+  @media (min-width: 900px) { .text-editor { min-height: 540px; } }
+  .text-err { color: var(--stop, #d1495b); font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.9rem; min-height: 1.2em; }
 
   .lab-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
   /* The lab used to be locked to one column inside a 46rem reading
