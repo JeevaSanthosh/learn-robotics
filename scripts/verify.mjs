@@ -14,6 +14,10 @@ import {
   emptyRecord, migrate, validate, serialize, deserialize,
   applySkillEvent, decayDue,
 } from '../src/lib/record.js';
+import { SimCore } from '../src/lib/sim/core.js';
+import { headlessDriver } from '../src/lib/sim/runner.js';
+import { grade, evaluateGoal } from '../src/lib/sim/grade.js';
+import { validateWorld, variant } from '../src/lib/sim/world.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const fails = [];
@@ -27,7 +31,7 @@ const mdxFiles = (await readdir(mdxDir)).filter((f) => f.endsWith('.mdx'));
 const lessons = await Promise.all(
   mdxFiles.map(async (f) => {
     const raw = await readFile(path.join(mdxDir, f), 'utf8');
-    const fm = raw.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+    const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
     const get = (k) => fm.match(new RegExp(`^${k}:\\s*(.+)$`, 'm'))?.[1]?.trim();
     return {
       slug: f.replace(/\.mdx$/, ''),
@@ -496,6 +500,85 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
     const uncoveredShipped = skills.filter((s) => s.module <= shippedMax && !taught.has(s.id));
     ok('C-SKILLMAP', `coverage: ${taught.size} skills taught so far; ${uncoveredShipped.length} in shipped modules (≤M${shippedMax}) await content in later phases`);
   }
+}
+
+// ---------- C-SIM-HEADLESS: the core imports nothing DOM-related ------------
+// The whole point of the split (PRD §8.1) is a core that can grade in a Worker.
+// If a DOM reference or requestAnimationFrame creeps back into core/sensors/
+// noise, multi-seed grading silently breaks. Guard the three headless files.
+{
+  const headlessFiles = ['src/lib/sim/core.js', 'src/lib/sim/sensors.js', 'src/lib/sim/noise.js'];
+  const banned = /\brequestAnimationFrame\b|\bdocument\b|\bwindow\b|\bgetComputedStyle\b|\bgetContext\b|\bperformance\.now\b|\bcanvas\b/;
+  const offenders = [];
+  for (const f of headlessFiles) {
+    let src = await readFile(path.join(ROOT, f), 'utf8');
+    src = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''); // strip comments
+    const hit = src.match(banned);
+    if (hit) offenders.push(`${f} (${hit[0]})`);
+  }
+  offenders.length
+    ? bad('C-SIM-HEADLESS', `DOM/timing reference in headless core: ${offenders.join(', ')}`)
+    : ok('C-SIM-HEADLESS', 'core/sensors/noise reference no DOM, rAF or wall-clock');
+}
+
+// ---------- C-SIM-DET: determinism is the contract --------------------------
+// Same program + same seed => identical metrics. This is what makes grading
+// fair, replays exact, and the seed-chip debugging affordance trustworthy.
+{
+  const world = { id: 't', size: { w: 360, h: 300 }, start: { x: 60, y: 240, heading: -90 }, target: { x: 300, y: 60, r: 26 } };
+  const prog = async (r) => { await r.moveForward(3); await r.turn(90); await r.moveForward(4); };
+  const run = async () => {
+    const core = new SimCore(variant(world, 12345));
+    await prog(headlessDriver(core));
+    return JSON.stringify(evaluateGoal(core, 'reach-target').metrics);
+  };
+  const first = await run();
+  let same = true;
+  for (let i = 0; i < 100; i++) if ((await run()) !== first) same = false;
+  same ? ok('C-SIM-DET', 'identical metrics across 100 runs of the same program+seed')
+    : bad('C-SIM-DET', 'the core is not deterministic — grading would be unfair');
+}
+
+// ---------- C-SIM-PERF: 10 seeds × ~60 simulated seconds < 3s ---------------
+{
+  const world = { id: 'p', size: { w: 360, h: 300 }, start: { x: 180, y: 150, heading: -90 } };
+  // ~60 simulated seconds of activity (60 ticks/s): a small repeated square.
+  const prog = async (r) => { for (let i = 0; i < 40; i++) { await r.moveForward(2); await r.turn(90); } };
+  const t0 = Date.now();
+  await grade(prog, world, { seeds: 10, goal: 'free' });
+  const ms = Date.now() - t0;
+  ms < 3000 ? ok('C-SIM-PERF', `10-seed headless grading ran in ${ms}ms (< 3000ms budget)`)
+    : bad('C-SIM-PERF', `10-seed grading took ${ms}ms, over the 3s budget`);
+}
+
+// ---------- C-WORLDS: world JSON validates; referenced worlds exist ---------
+{
+  const worldsDir = path.join(ROOT, 'src/content/worlds');
+  let files = [];
+  try { files = (await readdir(worldsDir)).filter((f) => f.endsWith('.json')); } catch { files = []; }
+  const ids = new Set();
+  let allValid = true;
+  for (const f of files) {
+    let w;
+    try { w = JSON.parse(await readFile(path.join(worldsDir, f), 'utf8')); }
+    catch { bad('C-WORLDS', `${f} is not valid JSON`); allValid = false; continue; }
+    const { ok: good, errors } = validateWorld(w);
+    if (!good) { bad('C-WORLDS', `${f}: ${errors.join('; ')}`); allValid = false; }
+    if (w.id !== f.replace(/\.json$/, '')) { bad('C-WORLDS', `${f} id "${w.id}" must match filename`); allValid = false; }
+    ids.add(w.id);
+  }
+  if (files.length && allValid) ok('C-WORLDS', `${files.length} world file(s) validate and ids match filenames`);
+  if (!files.length) ok('C-WORLDS', 'no world files yet (lessons still inline arenas) — nothing to validate');
+
+  // Any world a lesson references by id must exist.
+  const missing = [];
+  for (const l of lessons)
+    for (const m of l.raw.matchAll(/\bdata-world=["']([^"']+)["']|\bworld=["']([^"']+)["']/g)) {
+      const id = m[1] || m[2];
+      if (id && !ids.has(id)) missing.push(`${l.slug}→${id}`);
+    }
+  missing.length ? bad('C-WORLDS', `lessons reference worlds that do not exist: ${missing.join(', ')}`)
+    : ok('C-WORLDS', 'every world referenced by a lesson exists');
 }
 
 // ---------- report ----------------------------------------------------------
