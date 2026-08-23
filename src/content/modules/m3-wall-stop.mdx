@@ -31,6 +31,7 @@ The cleanest tool is the **repeat until** block: *repeat until distance ≤ 1 �
   blocks="sensing"
   required="robot_distance"
   goalText="Drive up close to the top wall and stop WITHOUT touching it, using the distance sensor."
+  fixedWorld="single tuned arena; seeded grading arrives with the M3 noise / M9 unseen-maze content"
   predict="choice"
   predictPrompt="Before you run: what will your robot actually do this time?"
   predictChoices={JSON.stringify([
@@ -58,3 +59,26 @@ That last one is why real robots carry several sensors pointing different ways. 
 Here's a program from another learner. It should stop before the wall, but it doesn't. Read it, decide which line is wrong *before* you reveal — finding the fault yourself is the skill this whole module is building.
 
 <DebugChallenge id="dbg-distance-read-once" />
+
+## Bonus: don't crash — six worlds, one program
+
+Counting squares works right up until the wall moves. Here's the real test of a robot: **the same program has to work when the world changes.** This mission grades your program across **six worlds** where the wall sits at a different distance each time. Pass at least five without crashing.
+
+A memorised "move forward N" can't win this — it'll crash where the wall is closer and stop short where it's farther. Only *sensing* survives all six.
+
+<RobotLab
+  lessonId="m3-dont-crash"
+  goal="survive:5"
+  blocks="sensing"
+  required="robot_distance"
+  world="m3-dont-crash"
+  seeds={6}
+  mustPass={5}
+  goalText="Drive toward the wall and stop before you hit it — in all six worlds. Use the distance sensor; a fixed number of moves won't survive."
+  predict="choice"
+  predictPrompt="Before you run: will your program clear all six worlds?"
+  predictChoices={JSON.stringify([
+    { label: "Yes — it senses, so it survives every world", rule: "bumped == false" },
+    { label: "No — it crashes on at least one", rule: "bumped == true" }
+  ])}
+/>

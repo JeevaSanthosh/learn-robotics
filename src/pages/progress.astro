@@ -113,7 +113,9 @@ const totalLessons = lessons.length;
 
   function paint() {
     const s = load();
-    const done = Object.keys(s.lessons).length;
+    // Count only listed lessons — bonus/seeded missions complete their own ids
+    // (e.g. "m3-dont-crash") which must not push the percentage past 100%.
+    const done = [...document.querySelectorAll('.lesson-list li')].filter((li) => li.dataset.slug in s.lessons).length;
 
     document.getElementById('pct').textContent = TOTAL ? `${Math.round((done / TOTAL) * 100)}%` : '0%';
     document.getElementById('pct-sub').textContent = `${done} of ${TOTAL} lessons`;

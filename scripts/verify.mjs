@@ -18,6 +18,7 @@ import { SimCore } from '../src/lib/sim/core.js';
 import { headlessDriver } from '../src/lib/sim/runner.js';
 import { grade, evaluateGoal } from '../src/lib/sim/grade.js';
 import { validateWorld, variant } from '../src/lib/sim/world.js';
+import { SEED_MISSIONS } from '../src/content/references.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const fails = [];
@@ -126,7 +127,7 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
 {
   const gate = progressSrc.match(/requiredCheckpoints:\s*\[([^\]]*)\]/)?.[1] ?? '';
   const gateSlugs = [...gate.matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  const gateQuiz = progressSrc.match(/gateQuiz:\s*'([^']+)'/)?.[1];
+  const gateQuiz = progressSrc.match(/gateQuiz:\s*'([^']+)'/)?.[1] || progressSrc.match(/quiz:\s*'([^']+)'/)?.[1];
   const slugset = new Map(lessons.map((l) => [l.slug, l]));
   for (const s of gateSlugs) {
     const l = slugset.get(s);
@@ -628,6 +629,87 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
       for (const m of l.raw.matchAll(/<DebugChallenge\b[^>]*\bid=["']([^"']+)["']/g))
         if (!ids.has(m[1])) missing.push(`${l.slug}→${m[1]}`);
     missing.length ? bad('C-DEBUG', `lessons embed challenges that do not exist: ${missing.join(', ')}`) : ok('C-DEBUG', 'every embedded debug challenge exists in the corpus');
+  }
+}
+
+// ---------- Rigor ladder (PRD §6, §16) --------------------------------------
+// Rigor is not vibes: the seed count, prediction requirement and world-variance
+// are PROPS on the lab, and these conditions are what the code actually checks
+// (R-RULE-3). A lesson can't claim R3 while grading one fixed world in silence.
+{
+  const rigorOf = (l) => Number(l.raw.match(/^rigor:\s*(\d+)/m)?.[1] || 0);
+
+  // C-RIGOR-DECL: every lesson declares a rigor in 1..5.
+  {
+    const bad2 = lessons.filter((l) => { const r = rigorOf(l); return !(r >= 1 && r <= 5); });
+    bad2.length
+      ? bad('C-RIGOR-DECL', `lessons missing a valid rigor: ${bad2.map((l) => l.slug).join(', ')}`)
+      : ok('C-RIGOR-DECL', `all ${lessons.length} lessons declare a rigor (1–5)`);
+  }
+
+  // C-RIGOR-MONO: module rigor (the max over its lessons) never decreases.
+  {
+    const modRigor = new Map();
+    for (const l of lessons) modRigor.set(l.module, Math.max(modRigor.get(l.module) || 0, rigorOf(l)));
+    const mods = [...modRigor.keys()].sort((a, b) => a - b);
+    let monotonic = true, detail = '';
+    for (let i = 1; i < mods.length; i++)
+      if (modRigor.get(mods[i]) < modRigor.get(mods[i - 1])) { monotonic = false; detail = `M${mods[i]}(${modRigor.get(mods[i])}) < M${mods[i - 1]}(${modRigor.get(mods[i - 1])})`; }
+    monotonic ? ok('C-RIGOR-MONO', `module rigor is non-decreasing: ${mods.map((m) => `M${m}:R${modRigor.get(m)}`).join(' ')}`)
+      : bad('C-RIGOR-MONO', `module rigor decreases: ${detail}`);
+  }
+
+  // C-RIGOR-IMPL: a graded lab's props satisfy its lesson's rigor.
+  //   R2+ ⇒ seeds>=5 (a seeded world) OR an explicit fixedWorld declaration
+  //   R3+ ⇒ predict configured
+  //   R4+ ⇒ unseen grading AND a scored metric
+  {
+    let checked = 0;
+    for (const l of lessons) {
+      const r = rigorOf(l);
+      for (const m of l.raw.matchAll(/<RobotLab\b[\s\S]*?\/>/g)) {
+        const lab = m[0];
+        const g = lab.match(/goal=["']([^"']+)["']/)?.[1] || 'free';
+        if (g === 'free') continue;
+        checked++;
+        const seeds = Number(lab.match(/\bseeds=\{?["']?(\d+)/)?.[1] || 0);
+        const fixed = /\bfixedWorld[=\s/>]/.test(lab);
+        const hasPredict = /predict=["'](choice|number)["']/.test(lab);
+        const unseen = /\bunseen\b/.test(lab);
+        const scored = /\bscoreBy=/.test(lab);
+        if (r >= 2 && !(seeds >= 5 || fixed))
+          bad('C-RIGOR-IMPL', `${l.slug} (R${r}) graded lab must grade across seeds>=5 or declare fixedWorld`);
+        else if (r >= 3 && !hasPredict)
+          bad('C-RIGOR-IMPL', `${l.slug} (R${r}) graded lab must configure predict`);
+        else if (r >= 4 && !(unseen && scored))
+          bad('C-RIGOR-IMPL', `${l.slug} (R${r}) graded lab must use unseen seeds and a scored metric`);
+        else
+          ok('C-RIGOR-IMPL', `${l.slug} (R${r}) grading props satisfy its rigor`);
+      }
+    }
+    if (!checked) ok('C-RIGOR-IMPL', 'no graded labs to check');
+  }
+}
+
+// ---------- C-SEEDS & C-NOSHORTCUT: seeded missions are well-posed -----------
+// Every seeded mission's reference solution passes (solvable), and its
+// hard-coded straight-line drive fails (can't be brute-forced). Run against the
+// deterministic grader — the same guarantee scripts/test-references.mjs checks.
+{
+  if (!SEED_MISSIONS.length) {
+    ok('C-SEEDS', 'no seeded missions declared yet');
+  } else {
+    for (const mi of SEED_MISSIONS) {
+      let world;
+      try { world = JSON.parse(await readFile(path.join(ROOT, 'src/content/worlds', mi.worldId + '.json'), 'utf8')); }
+      catch { bad('C-SEEDS', `seeded mission ${mi.id} references missing world ${mi.worldId}`); continue; }
+      const good = await grade(mi.good, world, { seeds: mi.seeds, mustPass: mi.mustPass, goal: mi.goal });
+      const hard = await grade(mi.hard, world, { seeds: mi.seeds, mustPass: mi.mustPass, goal: mi.goal });
+      good.passed ? ok('C-SEEDS', `${mi.id}: reference solution passes ${good.passedCount}/${mi.seeds.length}`)
+        : bad('C-SEEDS', `${mi.id}: reference solution only passes ${good.passedCount}/${mi.seeds.length} (need ${mi.mustPass}) — unsolvable`);
+      !hard.passed ? ok('C-NOSHORTCUT', `${mi.id}: a hard-coded straight-line drive fails (passed ${hard.passedCount}/${mi.seeds.length})`)
+        : bad('C-NOSHORTCUT', `${mi.id}: a hard-coded drive passes ${hard.passedCount}/${mi.seeds.length} — mission is brute-forceable`);
+    }
   }
 }
 
