@@ -1,0 +1,696 @@
+{
+  "version": 1,
+  "areas": {
+    "core": "Fundamentals of what a robot is and program structure",
+    "logic": "Control flow, variables, abstraction",
+    "sense": "Sensors and sensing",
+    "elec": "Electricity and power",
+    "act": "Actuators and motion output",
+    "code": "Text programming",
+    "hw": "Real hardware bring-up",
+    "ctrl": "Feedback and control",
+    "kin": "Kinematics and localisation",
+    "plan": "Planning and algorithms",
+    "perc": "Perception and vision",
+    "ml": "Machine learning",
+    "sys": "Systems architecture",
+    "safety": "Safety",
+    "ethics": "Ethics and responsibility",
+    "debug": "Debugging discipline",
+    "meta": "Engineering method and reasoning"
+  },
+  "skills": [
+    {
+      "id": "core.robot-loop",
+      "label": "Sense-decide-act loop",
+      "area": "core",
+      "def": "A robot repeatedly senses its world, decides what to do, and acts.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "core.sequence",
+      "label": "Sequence and order",
+      "area": "core",
+      "def": "A program is an ordered list of steps that run one after another.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "act.led",
+      "label": "Controlling an LED",
+      "area": "act",
+      "def": "You can turn an output like an LED on and off from your program.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "act.drive",
+      "label": "Driving and turning",
+      "area": "act",
+      "def": "Commands make the robot move forward and turn, changing where it points.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "logic.order",
+      "label": "Order matters",
+      "area": "logic",
+      "def": "The same steps in a different order make the robot do something different.",
+      "requires": ["core.sequence"],
+      "module": 1
+    },
+    {
+      "id": "debug.read-symptom",
+      "label": "Reading a symptom",
+      "area": "debug",
+      "def": "Watch what the robot actually does and describe the problem before guessing a cause.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "debug.discipline",
+      "label": "Debugging as a discipline",
+      "area": "debug",
+      "def": "Debugging is a repeatable method, not luck.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "meta.version-control",
+      "label": "Version control",
+      "area": "meta",
+      "def": "Track and document your work with version control.",
+      "requires": [],
+      "module": 1
+    },
+    {
+      "id": "logic.loop.counted",
+      "label": "Counted loop",
+      "area": "logic",
+      "def": "A repeat block runs the same steps a fixed number of times.",
+      "requires": ["core.sequence"],
+      "module": 2
+    },
+    {
+      "id": "logic.loop.nested",
+      "label": "Nested loops",
+      "area": "logic",
+      "def": "A loop inside another loop repeats a whole pattern many times.",
+      "requires": ["logic.loop.counted"],
+      "module": 2
+    },
+    {
+      "id": "logic.variable",
+      "label": "Variables",
+      "area": "logic",
+      "def": "A variable is a named box that remembers a number for later.",
+      "requires": [],
+      "module": 2
+    },
+    {
+      "id": "logic.parameterise",
+      "label": "Parameterising with a value",
+      "area": "logic",
+      "def": "Using a variable instead of a fixed number lets one program make many results.",
+      "requires": ["logic.variable"],
+      "module": 2
+    },
+    {
+      "id": "meta.efficiency",
+      "label": "Doing more with less",
+      "area": "meta",
+      "def": "A shorter program that gets the same result is usually a better program.",
+      "requires": ["logic.loop.counted"],
+      "module": 2
+    },
+    {
+      "id": "sense.range",
+      "label": "Distance sensing",
+      "area": "sense",
+      "def": "A distance sensor reports how far away the nearest obstacle is.",
+      "requires": [],
+      "module": 3
+    },
+    {
+      "id": "sense.threshold",
+      "label": "Choosing a threshold",
+      "area": "sense",
+      "def": "Pick a cutoff value that separates 'close enough to act' from 'not yet'.",
+      "requires": ["sense.range"],
+      "module": 3
+    },
+    {
+      "id": "sense.noise",
+      "label": "Sensor noise",
+      "area": "sense",
+      "def": "Real readings jitter and sometimes lie, so a single value cannot be trusted.",
+      "requires": ["sense.range"],
+      "module": 3
+    },
+    {
+      "id": "sense.blindspot",
+      "label": "Blind spots and cones",
+      "area": "sense",
+      "def": "A sensor only sees a limited cone and can miss angled walls or narrow gaps.",
+      "requires": ["sense.range"],
+      "module": 3
+    },
+    {
+      "id": "logic.conditional",
+      "label": "Conditionals",
+      "area": "logic",
+      "def": "An if/else picks between actions based on whether a condition is true.",
+      "requires": ["sense.range"],
+      "module": 3
+    },
+    {
+      "id": "logic.hysteresis",
+      "label": "Hysteresis",
+      "area": "logic",
+      "def": "Using two thresholds instead of one stops a robot flip-flopping on noisy readings.",
+      "requires": ["logic.conditional", "sense.noise"],
+      "module": 3
+    },
+    {
+      "id": "debug.isolate",
+      "label": "Isolating a fault",
+      "area": "debug",
+      "def": "Narrow down where a problem is by testing one piece of the program at a time.",
+      "requires": ["debug.read-symptom"],
+      "module": 3
+    },
+    {
+      "id": "elec.voltage",
+      "label": "Voltage",
+      "area": "elec",
+      "def": "Voltage is the electrical push that drives current around a circuit.",
+      "requires": [],
+      "module": 4
+    },
+    {
+      "id": "elec.current",
+      "label": "Current",
+      "area": "elec",
+      "def": "Current is the amount of electric charge flowing through a circuit.",
+      "requires": [],
+      "module": 4
+    },
+    {
+      "id": "elec.ohm",
+      "label": "Ohm's law",
+      "area": "elec",
+      "def": "Voltage equals current times resistance, so a resistor limits the current.",
+      "requires": ["elec.voltage", "elec.current"],
+      "module": 4
+    },
+    {
+      "id": "elec.power-budget",
+      "label": "Power budgets",
+      "area": "elec",
+      "def": "A battery holds a limited charge, so you must budget how much current things draw.",
+      "requires": ["elec.current"],
+      "module": 4
+    },
+    {
+      "id": "safety.battery",
+      "label": "Battery safety",
+      "area": "safety",
+      "def": "Batteries can overheat or catch fire if shorted or mishandled, so follow safe rules.",
+      "requires": ["elec.power-budget"],
+      "module": 4
+    },
+    {
+      "id": "act.gear-ratio",
+      "label": "Gear ratios",
+      "area": "act",
+      "def": "A gear ratio trades speed for turning force by dividing or multiplying rotation.",
+      "requires": [],
+      "module": 4
+    },
+    {
+      "id": "act.torque",
+      "label": "Torque and speed",
+      "area": "act",
+      "def": "Gears let a motor choose between more turning force and more speed, not both.",
+      "requires": ["act.gear-ratio"],
+      "module": 4
+    },
+    {
+      "id": "act.servo",
+      "label": "Servo position control",
+      "area": "act",
+      "def": "A servo moves to a commanded angle rather than just spinning at a speed.",
+      "requires": ["act.drive"],
+      "module": 4
+    },
+    {
+      "id": "act.pwm",
+      "label": "PWM duty cycle",
+      "area": "act",
+      "def": "Switching power on and off quickly sets an average 'half speed' for a motor.",
+      "requires": ["act.drive"],
+      "module": 4
+    },
+    {
+      "id": "logic.event",
+      "label": "Events and polling",
+      "area": "logic",
+      "def": "You can keep checking for something to happen, or wait to be told when it does.",
+      "requires": [],
+      "module": 5
+    },
+    {
+      "id": "logic.interrupt",
+      "label": "Interrupts",
+      "area": "logic",
+      "def": "An interrupt lets the robot react instantly to an event without polling for it.",
+      "requires": ["logic.event"],
+      "module": 5
+    },
+    {
+      "id": "logic.state-machine",
+      "label": "State machines",
+      "area": "logic",
+      "def": "A robot can be in one of several named states and switch between them on events.",
+      "requires": ["logic.variable", "logic.conditional"],
+      "module": 5
+    },
+    {
+      "id": "logic.function",
+      "label": "Functions",
+      "area": "logic",
+      "def": "A function is a named group of steps you can call and reuse.",
+      "requires": [],
+      "module": 5
+    },
+    {
+      "id": "logic.abstraction",
+      "label": "Abstraction",
+      "area": "logic",
+      "def": "Naming an idea as a function lets you use it without re-reading how it works.",
+      "requires": ["logic.function"],
+      "module": 5
+    },
+    {
+      "id": "debug.trace",
+      "label": "Tracing execution",
+      "area": "debug",
+      "def": "Follow the program step by step to see what value each part has as it runs.",
+      "requires": ["debug.isolate"],
+      "module": 5
+    },
+    {
+      "id": "code.syntax",
+      "label": "Code syntax",
+      "area": "code",
+      "def": "Text code has strict rules for indentation, colons and spelling that must be exact.",
+      "requires": [],
+      "module": 6
+    },
+    {
+      "id": "code.function-args",
+      "label": "Functions with arguments",
+      "area": "code",
+      "def": "A text function can take arguments and return a value back to the caller.",
+      "requires": ["code.syntax", "logic.function"],
+      "module": 6
+    },
+    {
+      "id": "code.error-reading",
+      "label": "Reading errors",
+      "area": "code",
+      "def": "An error message names the line and the kind of mistake so you can fix it.",
+      "requires": ["code.syntax"],
+      "module": 6
+    },
+    {
+      "id": "code.text-transfer",
+      "label": "Blocks to text",
+      "area": "code",
+      "def": "The same program you built with blocks can be written and read as text code.",
+      "requires": ["code.syntax"],
+      "module": 6
+    },
+    {
+      "id": "hw.flash",
+      "label": "Flashing hardware",
+      "area": "hw",
+      "def": "You can load your program onto a real board so it runs on real wheels.",
+      "requires": ["code.text-transfer"],
+      "module": 6
+    },
+    {
+      "id": "hw.sim-real-gap",
+      "label": "Sim-to-real gap",
+      "area": "hw",
+      "def": "Real hardware behaves differently from the simulator, and the difference is the lesson.",
+      "requires": ["hw.flash"],
+      "module": 6
+    },
+    {
+      "id": "ctrl.open-loop",
+      "label": "Open-loop control",
+      "area": "ctrl",
+      "def": "Open-loop means commanding an action blindly, like 'drive for two seconds'.",
+      "requires": [],
+      "module": 7
+    },
+    {
+      "id": "ctrl.closed-loop",
+      "label": "Closed-loop control",
+      "area": "ctrl",
+      "def": "Closed-loop means using a sensor to keep acting until the goal is actually reached.",
+      "requires": ["ctrl.open-loop", "sense.range"],
+      "module": 7
+    },
+    {
+      "id": "ctrl.error",
+      "label": "Error signal",
+      "area": "ctrl",
+      "def": "Error is the gap between where you are and where you want to be.",
+      "requires": ["ctrl.closed-loop"],
+      "module": 7
+    },
+    {
+      "id": "ctrl.proportional",
+      "label": "Proportional control",
+      "area": "ctrl",
+      "def": "Correct by an amount proportional to the error: correction equals gain times error.",
+      "requires": ["ctrl.error"],
+      "module": 7
+    },
+    {
+      "id": "ctrl.derivative",
+      "label": "Derivative term",
+      "area": "ctrl",
+      "def": "Reacting to how fast the error changes damps overshoot and wobble.",
+      "requires": ["ctrl.proportional"],
+      "module": 7
+    },
+    {
+      "id": "ctrl.tuning-method",
+      "label": "Tuning method",
+      "area": "ctrl",
+      "def": "Tune by changing one gain, recording what happens, and repeating.",
+      "requires": ["ctrl.proportional"],
+      "module": 7
+    },
+    {
+      "id": "meta.one-variable",
+      "label": "Change one variable",
+      "area": "meta",
+      "def": "Change only one thing at a time so you know what caused the result.",
+      "requires": [],
+      "module": 7
+    },
+    {
+      "id": "kin.frames",
+      "label": "Coordinate frames",
+      "area": "kin",
+      "def": "Position is described with x, y and heading, in the world's or the robot's frame.",
+      "requires": [],
+      "module": 8
+    },
+    {
+      "id": "kin.diff-drive",
+      "label": "Differential-drive kinematics",
+      "area": "kin",
+      "def": "Two wheel speeds combine to make the robot drive straight or curve along a path.",
+      "requires": ["kin.frames", "act.drive"],
+      "module": 8
+    },
+    {
+      "id": "kin.odometry",
+      "label": "Odometry",
+      "area": "kin",
+      "def": "Counting wheel ticks turns distance travelled into an estimate of position.",
+      "requires": ["kin.diff-drive", "sense.encoder"],
+      "module": 8
+    },
+    {
+      "id": "kin.drift",
+      "label": "Drift and slip",
+      "area": "kin",
+      "def": "Small errors in each step add up, so the robot slowly gets lost over time.",
+      "requires": ["kin.odometry"],
+      "module": 8
+    },
+    {
+      "id": "kin.error-budget",
+      "label": "Error budgets",
+      "area": "kin",
+      "def": "An error budget adds up where position error comes from and how big each source is.",
+      "requires": ["kin.drift"],
+      "module": 8
+    },
+    {
+      "id": "kin.forward-arm",
+      "label": "Forward kinematics of an arm",
+      "area": "kin",
+      "def": "Joint angles of a jointed arm determine where its tip ends up in space.",
+      "requires": ["kin.frames", "act.servo"],
+      "module": 8
+    },
+    {
+      "id": "sense.encoder",
+      "label": "Wheel encoders",
+      "area": "sense",
+      "def": "An encoder counts wheel ticks so you can measure how far a wheel has turned.",
+      "requires": [],
+      "module": 8
+    },
+    {
+      "id": "sense.imu",
+      "label": "IMU heading",
+      "area": "sense",
+      "def": "An IMU reports the robot's heading, though its estimate slowly drifts.",
+      "requires": [],
+      "module": 8
+    },
+    {
+      "id": "plan.reactive",
+      "label": "Reactive strategies",
+      "area": "plan",
+      "def": "Reacting to what the sensor sees right now, like wall-following, always works but is often slow.",
+      "requires": ["logic.conditional"],
+      "module": 9
+    },
+    {
+      "id": "plan.grid",
+      "label": "The world as a grid",
+      "area": "plan",
+      "def": "Chopping the world into a grid of cells makes it something an algorithm can search.",
+      "requires": ["kin.frames"],
+      "module": 9
+    },
+    {
+      "id": "plan.bfs",
+      "label": "Breadth-first search",
+      "area": "plan",
+      "def": "Flood fill explores a grid outward from the start to find a path to the goal.",
+      "requires": ["plan.grid"],
+      "module": 9
+    },
+    {
+      "id": "plan.cost",
+      "label": "Path cost",
+      "area": "plan",
+      "def": "Each move has a cost, and a good plan is the one with the lowest total cost.",
+      "requires": ["plan.bfs"],
+      "module": 9
+    },
+    {
+      "id": "plan.heuristic",
+      "label": "Heuristics",
+      "area": "plan",
+      "def": "A heuristic guesses which direction is promising so search does less wasted work.",
+      "requires": ["plan.cost"],
+      "module": 9
+    },
+    {
+      "id": "plan.replan",
+      "label": "Replanning",
+      "area": "plan",
+      "def": "When the world changes mid-run, throw away the old plan and compute a new one.",
+      "requires": ["plan.bfs"],
+      "module": 9
+    },
+    {
+      "id": "meta.complexity",
+      "label": "Cost of computation",
+      "area": "meta",
+      "def": "Some approaches take far more steps than others as the problem grows.",
+      "requires": [],
+      "module": 9
+    },
+    {
+      "id": "perc.pixels",
+      "label": "Pixels and images",
+      "area": "perc",
+      "def": "A camera gives a grid of pixels, each with a brightness and colour.",
+      "requires": [],
+      "module": 10
+    },
+    {
+      "id": "perc.threshold",
+      "label": "Image thresholding",
+      "area": "perc",
+      "def": "A single brightness cutoff splits an image into 'interesting' and 'not'.",
+      "requires": ["perc.pixels"],
+      "module": 10
+    },
+    {
+      "id": "perc.blob",
+      "label": "Blob detection",
+      "area": "perc",
+      "def": "Grouping connected matching pixels finds the object you are looking for.",
+      "requires": ["perc.threshold"],
+      "module": 10
+    },
+    {
+      "id": "perc.centroid",
+      "label": "Centroid and area",
+      "area": "perc",
+      "def": "A blob's centre tells you where the object is and its area tells you how big.",
+      "requires": ["perc.blob"],
+      "module": 10
+    },
+    {
+      "id": "perc.line-vision",
+      "label": "Line following by camera",
+      "area": "perc",
+      "def": "A camera can find and follow a line by locating it in each frame.",
+      "requires": ["perc.centroid"],
+      "module": 10
+    },
+    {
+      "id": "perc.failure-modes",
+      "label": "Why vision breaks",
+      "area": "perc",
+      "def": "Light, shadow, colour shifts and blur can all fool a vision program.",
+      "requires": ["perc.threshold"],
+      "module": 10
+    },
+    {
+      "id": "ml.rules-vs-learning",
+      "label": "Rules vs learning",
+      "area": "ml",
+      "def": "When hand-written rules stop scaling, you learn behaviour from data instead.",
+      "requires": [],
+      "module": 11
+    },
+    {
+      "id": "ml.features",
+      "label": "Features",
+      "area": "ml",
+      "def": "A feature is a measured number that describes an example for the machine to learn from.",
+      "requires": [],
+      "module": 11
+    },
+    {
+      "id": "ml.labels",
+      "label": "Labels",
+      "area": "ml",
+      "def": "A label is the correct answer attached to an example so the machine can learn it.",
+      "requires": [],
+      "module": 11
+    },
+    {
+      "id": "ml.classifier",
+      "label": "A tiny classifier",
+      "area": "ml",
+      "def": "A classifier looks at features and predicts which labelled class an example belongs to.",
+      "requires": ["ml.features", "ml.labels"],
+      "module": 11
+    },
+    {
+      "id": "ml.train-test",
+      "label": "Train/test split",
+      "area": "ml",
+      "def": "Hold back some data to test on, so you measure learning and not memorising.",
+      "requires": ["ml.classifier"],
+      "module": 11
+    },
+    {
+      "id": "ml.overfit",
+      "label": "Overfitting",
+      "area": "ml",
+      "def": "Scoring perfectly on training data but failing on new data means it just memorised.",
+      "requires": ["ml.train-test"],
+      "module": 11
+    },
+    {
+      "id": "ethics.data",
+      "label": "Where data comes from",
+      "area": "ethics",
+      "def": "Training data reflects choices and biases that shape what a robot learns.",
+      "requires": ["ml.labels"],
+      "module": 11
+    },
+    {
+      "id": "ethics.autonomy",
+      "label": "Autonomy and responsibility",
+      "area": "ethics",
+      "def": "When a machine decides on its own, someone is still responsible for what it does.",
+      "requires": [],
+      "module": 11
+    },
+    {
+      "id": "safety.autonomous",
+      "label": "Autonomous-machine safety",
+      "area": "safety",
+      "def": "A robot that acts on its own needs safety rules for when it gets things wrong.",
+      "requires": ["ethics.autonomy"],
+      "module": 11
+    },
+    {
+      "id": "sys.architecture",
+      "label": "System architecture",
+      "area": "sys",
+      "def": "A robot is split into parts with clear jobs instead of one giant program.",
+      "requires": [],
+      "module": 12
+    },
+    {
+      "id": "sys.messaging",
+      "label": "Messages between parts",
+      "area": "sys",
+      "def": "Parts of a robot talk by sending messages, like nodes and topics in ROS 2.",
+      "requires": ["sys.architecture"],
+      "module": 12
+    },
+    {
+      "id": "sys.latency",
+      "label": "Latency",
+      "area": "sys",
+      "def": "Messages take time to arrive, and that delay can ruin timing-sensitive behaviour.",
+      "requires": ["sys.messaging"],
+      "module": 12
+    },
+    {
+      "id": "sys.reliability",
+      "label": "Reliability",
+      "area": "sys",
+      "def": "A robust system plans for the parts that will fail, like power loss or a stuck sensor.",
+      "requires": ["sys.architecture"],
+      "module": 12
+    },
+    {
+      "id": "sys.test-plan",
+      "label": "Test plans",
+      "area": "sys",
+      "def": "A test plan lists what to check so a robot survives a demo instead of failing live.",
+      "requires": ["sys.reliability"],
+      "module": 12
+    },
+    {
+      "id": "meta.engineering-process",
+      "label": "Engineering process",
+      "area": "meta",
+      "def": "Engineering is a loop of specify, build the smallest test, measure, and revise.",
+      "requires": [],
+      "module": 12
+    }
+  ]
+}

@@ -23,13 +23,13 @@ const { slugs = [], label = '', here = '' } = Astro.props;
 </div>
 
 <script>
-  import { load } from '../lib/progress.js';
+  import { completedSlugs } from '../lib/progress.js';
 
   function paint() {
     for (const bar of document.querySelectorAll('.trace-progress')) {
       const slugs = JSON.parse(bar.dataset.slugs || '[]');
       const here = bar.dataset.here || '';
-      const done = load().completed;
+      const done = completedSlugs();
       const leds = bar.querySelectorAll('.led');
       const segs = bar.querySelectorAll('.seg');
       let count = 0;

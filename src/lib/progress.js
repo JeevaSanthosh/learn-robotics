@@ -1,61 +1,98 @@
-// Single-user, per-browser progress tracking (locked decision: localStorage only).
-// Everything here is a pedagogical gate, not a security one — it is fine that
-// it can be bypassed via devtools.
+// Single-user, per-browser progress tracking (locked decision: localStorage
+// only). Everything here is a pedagogical gate, not a security one — it is fine
+// that it can be bypassed via devtools.
+//
+// This is the BROWSER layer. The record's shape, migration, validation and
+// skill-mastery maths live in ./record.js, which is pure and Node-importable so
+// verify.mjs and the test suites can check them (PRD §11, §16). This file adds
+// the things that only exist in a browser: localStorage, the change event, and
+// file download/upload.
 
-const KEY = 'lr-progress-v1';
+import {
+  PROGRESS_KEY, LEGACY_KEY, BACKUP_KEY,
+  emptyRecord, migrate, validate, decayDue,
+  applySkillEvent, dueSkills, serialize, deserialize,
+  TOPIC_TO_SKILLS,
+} from './record.js';
 
-const EMPTY = {
-  completed: [],        // lesson slugs
-  quizScores: {},       // slug -> { score, total }
-  activeDays: [],       // 'YYYY-MM-DD' with any completed activity (friendly streaks)
-  badges: [],
-  assessments: [],      // { at, difficulty, score, total } — newest last, capped
-  topicStats: {},       // topic -> { right, wrong } across all assessment answers
-  daily: {},            // 'YYYY-MM-DD' -> { lessons, exercises, runs, assessments, best }
-};
-
-// Per-day activity log. This is a single-learner site with no account, so the
-// only honest record of "did I show up today" is local. Keeping a per-day
-// bucket (rather than just a list of dates) is what makes streaks, the
-// calendar heatmap, and "you did four exercises on Tuesday" possible.
 export function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// --- load / save ------------------------------------------------------------
+// load() is the one place the v1 -> v2 upgrade happens. The v1 blob is copied to
+// a backup key BEFORE the v2 key is written, so the upgrade can never be the
+// step that loses a year of records (PRD §11.6, R9). Skill decay is applied on
+// every load so time passing lowers mastery even with no activity, and is
+// persisted when it changes.
+export function load() {
+  let record;
+  try {
+    const rawV2 = localStorage.getItem(PROGRESS_KEY);
+    if (rawV2) {
+      record = migrate(JSON.parse(rawV2));
+    } else {
+      const rawV1 = localStorage.getItem(LEGACY_KEY);
+      if (rawV1) {
+        if (!localStorage.getItem(BACKUP_KEY)) localStorage.setItem(BACKUP_KEY, rawV1);
+        record = migrate(JSON.parse(rawV1));
+        localStorage.setItem(PROGRESS_KEY, JSON.stringify(record));
+      } else {
+        record = emptyRecord();
+      }
+    }
+  } catch {
+    return emptyRecord();
+  }
+  const { changed } = decayDue(record);
+  if (changed) localStorage.setItem(PROGRESS_KEY, JSON.stringify(record));
+  return record;
+}
+
+function save(state) {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(state));
+  window.dispatchEvent(new CustomEvent('lr-progress', { detail: state }));
+}
+
+function markActive(s) {
+  if (!s.activeDays.includes(today())) s.activeDays.push(today());
 }
 
 function bumpDaily(s, field, by = 1) {
   const d = (s.daily[today()] = s.daily[today()] || {
     lessons: 0, exercises: 0, runs: 0, assessments: 0, best: 0,
   });
-  d[field] += by;
+  d[field] = (d[field] || 0) + by;
   return d;
 }
 
+// --- activity ---------------------------------------------------------------
 /** Called whenever the learner presses Run — the truest signal of activity. */
 export function recordRun(lessonId) {
   const s = load();
   bumpDaily(s, 'runs');
-  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  markActive(s);
   save(s);
 }
 
 /** A practical exercise ticked off inside a lesson. */
 export function recordExercise(exerciseId) {
   const s = load();
-  s.exercises = s.exercises || [];
   if (!s.exercises.includes(exerciseId)) {
     s.exercises.push(exerciseId);
     bumpDaily(s, 'exercises');
   }
-  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  markActive(s);
   awardBadges(s);
   save(s);
   return s;
 }
 
 export function isExerciseDone(exerciseId) {
-  return (load().exercises || []).includes(exerciseId);
+  return load().exercises.includes(exerciseId);
 }
 
+// --- streaks & heatmap ------------------------------------------------------
 /** Consecutive days up to and including today (or yesterday, so a day in
  *  progress doesn't look like a broken streak). */
 export function currentStreak() {
@@ -97,29 +134,17 @@ export function dailyHistory(days = 35) {
   return out;
 }
 
-const MAX_ASSESSMENT_HISTORY = 50;
-
-export function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return structuredClone(EMPTY);
-    return { ...structuredClone(EMPTY), ...JSON.parse(raw) };
-  } catch {
-    return structuredClone(EMPTY);
-  }
-}
-
-function save(state) {
-  localStorage.setItem(KEY, JSON.stringify(state));
-  window.dispatchEvent(new CustomEvent('lr-progress', { detail: state }));
-}
-
-
-
+// --- lessons & quizzes ------------------------------------------------------
 export function completeLesson(slug) {
   const s = load();
-  if (!s.completed.includes(slug)) s.completed.push(slug);
-  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  const prev = s.lessons[slug];
+  s.lessons[slug] = {
+    completedAt: prev?.completedAt || new Date().toISOString(),
+    attempts: (prev?.attempts || 0) + 1,
+    timeMs: prev?.timeMs || 0,
+  };
+  if (!prev) bumpDaily(s, 'lessons');
+  markActive(s);
   awardBadges(s);
   save(s);
   return s;
@@ -127,23 +152,31 @@ export function completeLesson(slug) {
 
 export function recordQuiz(slug, score, total) {
   const s = load();
-  const prev = s.quizScores[slug];
-  if (!prev || score > prev.score) s.quizScores[slug] = { score, total };
-  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  const entry = (s.quizzes[slug] = s.quizzes[slug] || { best: null, attempts: [] });
+  entry.attempts.push({ at: new Date().toISOString(), score, total });
+  if (!entry.best || score > entry.best.score) entry.best = { score, total };
+  markActive(s);
   awardBadges(s);
   save(s);
   return s;
 }
 
 export function isComplete(slug) {
-  return load().completed.includes(slug);
+  return slug in load().lessons;
 }
 
-// --- Assessment tracking --------------------------------------------------
+/** The completed lesson slugs, as an array — for callers that want a list. */
+export function completedSlugs(state = load()) {
+  return Object.keys(state.lessons);
+}
+
+// --- assessments ------------------------------------------------------------
 // The assessment page generates fresh questions every attempt, so there is no
 // per-question id worth storing. What IS worth storing is the shape of the
-// learner's understanding: score history (are they improving?) and per-topic
-// hit rate (what should they revisit?).
+// learner's understanding: score history (are they improving?), per-topic hit
+// rate (the existing page), and — new in v2 — per-skill mastery, so the same
+// answer also feeds spaced review (§11.5).
+const MAX_ASSESSMENT_HISTORY = 50;
 
 /**
  * @param {'easy'|'medium'|'hard'} difficulty
@@ -160,9 +193,11 @@ export function recordAssessment(difficulty, answers) {
   for (const a of answers) {
     const t = (s.topicStats[a.topic] = s.topicStats[a.topic] || { right: 0, wrong: 0 });
     a.correct ? t.right++ : t.wrong++;
+    for (const id of TOPIC_TO_SKILLS[a.topic] || []) applySkillEvent(s, id, a.correct);
   }
 
-  if (!s.activeDays.includes(today())) s.activeDays.push(today());
+  bumpDaily(s, 'assessments');
+  markActive(s);
   awardBadges(s);
   save(s);
   return s;
@@ -173,9 +208,7 @@ export function topicMastery() {
   const stats = load().topicStats;
   return Object.entries(stats)
     .map(([topic, { right, wrong }]) => ({
-      topic,
-      right,
-      wrong,
+      topic, right, wrong,
       asked: right + wrong,
       ratio: right + wrong ? right / (right + wrong) : 0,
     }))
@@ -188,29 +221,55 @@ export function bestAssessment(difficulty) {
   return runs.reduce((best, r) => (r.score / r.total > best.score / best.total ? r : best));
 }
 
-// --- Confidence gate (locked decision made concrete) ---------------------
-// "Ready for hardware" means: every checkpoint lesson in modules 1-2 is
-// complete AND the gate quiz scored >= 80%. Adjust GATE below as the
-// curriculum grows; keep the definition in one place.
+// --- skill mastery & spaced review (v2) ------------------------------------
+/** Record one graded skill answer (from a lesson mission or drill) and persist. */
+export function recordSkill(id, correct) {
+  const s = load();
+  applySkillEvent(s, id, correct);
+  markActive(s);
+  save(s);
+  return s;
+}
+
+/** Skills due for a review drill, soonest first — feeds the this-week card. */
+export function reviewQueue() {
+  return dueSkills(load());
+}
+
+/** All skills the learner has touched, weakest first — for /progress. */
+export function skillMastery() {
+  return Object.entries(load().skills)
+    .map(([id, s]) => ({ id, ...s }))
+    .sort((a, b) => a.level - b.level || (b.right + b.wrong) - (a.right + a.wrong));
+}
+
+// --- Confidence gate (locked decision made concrete) -----------------------
+// "Ready for hardware" means: every checkpoint lesson is complete AND the gate
+// quiz scored >= 80%. GATES[] and per-kit unlocks arrive in a later phase; the
+// single GATE stays the source of truth for now so verify.mjs C5 is unchanged.
 export const GATE = {
   requiredCheckpoints: ['m1-blink', 'm1-turn', 'm2-loops', 'm3-wall-stop', 'm4-motors-gears', 'm5-obstacle-course'],
   gateQuiz: 'm5-gate-quiz',
   minRatio: 0.8,
 };
 
-export function gateStatus() {
-  const s = load();
-  const missing = GATE.requiredCheckpoints.filter((c) => !s.completed.includes(c));
-  const quiz = s.quizScores[GATE.gateQuiz];
+function gateStatusFrom(s) {
+  const missing = GATE.requiredCheckpoints.filter((c) => !(c in s.lessons));
+  const quiz = s.quizzes[GATE.gateQuiz]?.best;
   const quizOk = !!quiz && quiz.score / quiz.total >= GATE.minRatio;
   return { open: missing.length === 0 && quizOk, missing, quizOk, quiz };
 }
 
-// --- Light gamification ---------------------------------------------------
+export function gateStatus() {
+  return gateStatusFrom(load());
+}
+
+// --- Light gamification -----------------------------------------------------
 function awardBadges(s) {
   const has = (b) => s.badges.includes(b);
-  if (s.completed.length >= 1 && !has('first-spark')) s.badges.push('first-spark');
-  if (s.completed.length >= 5 && !has('circuit-cadet')) s.badges.push('circuit-cadet');
+  const done = Object.keys(s.lessons).length;
+  if (done >= 1 && !has('first-spark')) s.badges.push('first-spark');
+  if (done >= 5 && !has('circuit-cadet')) s.badges.push('circuit-cadet');
   if (s.activeDays.length >= 3 && !has('three-day-streak')) s.badges.push('three-day-streak');
   if (gateStatusFrom(s).open && !has('hardware-ready')) s.badges.push('hardware-ready');
 
@@ -218,12 +277,6 @@ function awardBadges(s) {
   if (perfect('easy') && !has('quick-study')) s.badges.push('quick-study');
   if (perfect('medium') && !has('systems-thinker')) s.badges.push('systems-thinker');
   if (perfect('hard') && !has('debugger')) s.badges.push('debugger');
-}
-function gateStatusFrom(s) {
-  const missing = GATE.requiredCheckpoints.filter((c) => !s.completed.includes(c));
-  const quiz = s.quizScores[GATE.gateQuiz];
-  const quizOk = !!quiz && quiz.score / quiz.total >= GATE.minRatio;
-  return { open: missing.length === 0 && quizOk };
 }
 
 export const BADGE_LABELS = {
@@ -236,9 +289,12 @@ export const BADGE_LABELS = {
   'debugger': '📕 Debugger — perfect score on a hard assessment',
 };
 
-// --- Export / import (localStorage is fragile; give the user a backup) ----
+// --- Export / import (localStorage is fragile; give the user a backup) ------
+// Serialisation lives in record.js so the round-trip is testable (C-BACKUP):
+// import runs migrate(), so a v1 export still restores, and a v2 export
+// restores byte-identically.
 export function exportProgress() {
-  const blob = new Blob([JSON.stringify(load(), null, 2)], { type: 'application/json' });
+  const blob = new Blob([serialize(load())], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'learn-robotics-progress.json';
@@ -248,8 +304,9 @@ export function exportProgress() {
 
 export function importProgress(file) {
   return file.text().then((txt) => {
-    const data = JSON.parse(txt);
-    if (!Array.isArray(data.completed)) throw new Error('Not a progress file');
-    save({ ...structuredClone(EMPTY), ...data });
+    const data = deserialize(txt);
+    const { ok, errors } = validate(data);
+    if (!ok) throw new Error('Not a valid progress file: ' + errors[0]);
+    save(data);
   });
 }

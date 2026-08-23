@@ -10,6 +10,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  emptyRecord, migrate, validate, serialize, deserialize,
+  applySkillEvent, decayDue,
+} from '../src/lib/record.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const fails = [];
@@ -365,6 +369,132 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
     nonFreeLab || quizIds.includes(l.slug)
       ? ok('C-LABIDS', `${l.slug} has a completion path bound to its own slug`)
       : bad('C-LABIDS', `${l.slug} is a checkpoint but nothing completes the slug "${l.slug}" (lab ids: ${labIds.join(', ') || 'none'})`);
+  }
+}
+
+// ---------- C-MIGRATE: v1 -> v2 is idempotent and lossless -----------------
+// The record holds a whole year of work; an upgrade that drops or corrupts it
+// is the worst bug the product can ship (PRD §11.6, R9). The pure record layer
+// is exercised directly here over a synthetic v1 corpus. The full matrix lives
+// in scripts/test-migrate.mjs; this is the CI gate.
+{
+  const corpus = [
+    null,
+    {},
+    { completed: [], quizScores: {}, activeDays: [], badges: [], assessments: [], topicStats: {}, daily: {} },
+    {
+      completed: ['m1-blink', 'm1-turn', 'm2-loops'],
+      quizScores: { 'm5-gate-quiz': { score: 9, total: 10 } },
+      activeDays: ['2026-09-01'], badges: ['first-spark'],
+      assessments: [{ at: '2026-09-02T10:00:00Z', difficulty: 'easy', score: 5, total: 5 }],
+      topicStats: { loops: { right: 6, wrong: 2 }, sensing: { right: 3, wrong: 3 } },
+      daily: { '2026-09-01': { lessons: 1, exercises: 0, runs: 4, assessments: 0, best: 0 } },
+      exercises: ['ex-a'],
+    },
+  ];
+  let idem = true, lossless = true, valid = true;
+  for (const v1 of corpus) {
+    const once = migrate(v1);
+    if (JSON.stringify(once) !== JSON.stringify(migrate(once))) idem = false;
+    if (!validate(once).ok) valid = false;
+    if (v1 && Array.isArray(v1.completed))
+      for (const slug of v1.completed) if (!(slug in once.lessons)) lossless = false;
+    if (v1 && v1.badges) for (const b of v1.badges) if (!once.badges.includes(b)) lossless = false;
+  }
+  idem ? ok('C-MIGRATE', 'v1→v2 migration is idempotent over the corpus') : bad('C-MIGRATE', 'migration is not idempotent');
+  lossless ? ok('C-MIGRATE', 'no completed lessons or badges lost on migrate') : bad('C-MIGRATE', 'migration drops v1 data');
+  valid ? ok('C-MIGRATE', 'every migrated record validates') : bad('C-MIGRATE', 'a migrated record fails validation');
+}
+
+// ---------- C-SCHEMA: record stays valid after every public mutation --------
+// validate() is the schema. Here we prove it holds after the pure mutations the
+// library performs — a fresh record, a migrated one, skill events, and decay.
+{
+  let stayed = true;
+  const r = emptyRecord();
+  if (!validate(r).ok) stayed = false;
+  applySkillEvent(r, 'sense.range', true);
+  applySkillEvent(r, 'sense.range', false);
+  applySkillEvent(r, 'act.led', true);
+  if (!validate(r).ok) stayed = false;
+  decayDue(r, new Date(Date.now() + 400 * 86400000));
+  if (!validate(r).ok) stayed = false;
+  // validate must actually reject a broken record, or it proves nothing
+  const broken = emptyRecord(); broken.version = 1;
+  stayed && !validate(broken).ok
+    ? ok('C-SCHEMA', 'record validates after mutations; validate rejects a broken record')
+    : bad('C-SCHEMA', stayed ? 'validate accepts a broken record' : 'a mutation produced an invalid record');
+}
+
+// ---------- C-BACKUP: export -> import restores byte-identically ------------
+{
+  const r = migrate({
+    completed: ['m1-blink'], quizScores: { 'm5-gate-quiz': { score: 8, total: 10 } },
+    activeDays: ['2026-09-01'], badges: ['first-spark'], assessments: [], topicStats: {}, daily: {},
+  });
+  const text = serialize(r);
+  const restored = deserialize(text);
+  const byteIdentical = serialize(deserialize(text)) === text;
+  JSON.stringify(restored) === JSON.stringify(r) && byteIdentical
+    ? ok('C-BACKUP', 'export/import round-trips byte-identically')
+    : bad('C-BACKUP', 'export/import is not a faithful round-trip');
+}
+
+// ---------- C-SKILLMAP: the skill graph is sound and referenced ids exist ---
+// The skill graph (src/content/skills.json) is the spine of mastery, review and
+// coverage. Phase 0 enforces its structural integrity and that no lesson
+// references a skill that does not exist. Full taught/assessed/used closure over
+// all ~60 skills lands with the content in Phases 5–6; here we additionally
+// REPORT how much of the shipped modules is already covered, without failing on
+// lessons that do not exist yet.
+{
+  let graph;
+  try {
+    graph = JSON.parse(await readFile(path.join(ROOT, 'src/content/skills.json'), 'utf8'));
+  } catch (e) {
+    graph = null;
+    bad('C-SKILLMAP', 'src/content/skills.json missing or invalid JSON');
+  }
+  if (graph) {
+    const skills = graph.skills || [];
+    const byId = new Map(skills.map((s) => [s.id, s]));
+
+    const dupes = skills.map((s) => s.id).filter((id, i, a) => a.indexOf(id) !== i);
+    dupes.length ? bad('C-SKILLMAP', `duplicate skill ids: ${[...new Set(dupes)].join(', ')}`)
+      : ok('C-SKILLMAP', `${skills.length} skill ids are unique`);
+
+    const badArea = skills.filter((s) => s.area !== String(s.id).split('.')[0] || !graph.areas?.[s.area]);
+    badArea.length ? bad('C-SKILLMAP', `skills with an unknown/mismatched area: ${badArea.map((s) => s.id).slice(0, 5).join(', ')}`)
+      : ok('C-SKILLMAP', 'every skill area matches its id prefix and is declared');
+
+    const missingReq = skills.flatMap((s) => (s.requires || []).filter((r) => !byId.has(r)).map((r) => `${s.id}->${r}`));
+    missingReq.length ? bad('C-SKILLMAP', `prerequisite ids that do not exist: ${missingReq.slice(0, 5).join(', ')}`)
+      : ok('C-SKILLMAP', 'every prerequisite id exists');
+
+    const lateReq = skills.flatMap((s) => (s.requires || [])
+      .filter((r) => byId.get(r) && byId.get(r).module > s.module).map((r) => `${s.id}<-${r}`));
+    lateReq.length ? bad('C-SKILLMAP', `prerequisite taught in a later module: ${lateReq.slice(0, 5).join(', ')}`)
+      : ok('C-SKILLMAP', 'no prerequisite is introduced after the skill that needs it');
+
+    // Extract teaches/requires ids from lesson frontmatter (inline YAML arrays).
+    const idsIn = (raw, key) => {
+      const m = raw.match(new RegExp(`^${key}:\\s*\\[([^\\]]*)\\]`, 'm'));
+      return m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : [];
+    };
+    const referenced = new Set();
+    for (const l of lessons)
+      for (const key of ['teaches', 'requires'])
+        for (const id of idsIn(l.raw, key)) referenced.add(id);
+    const dangling = [...referenced].filter((id) => !byId.has(id));
+    dangling.length ? bad('C-SKILLMAP', `lessons teach/require skills not in the graph: ${dangling.join(', ')}`)
+      : ok('C-SKILLMAP', `${referenced.size} skill ids referenced by lessons all exist in the graph`);
+
+    // Coverage over shipped modules — informational, not a gate (content phases
+    // add the remaining lessons). Reported so the gap is visible, never hidden.
+    const shippedMax = Math.max(...lessons.map((l) => l.module));
+    const taught = new Set([...referenced]);
+    const uncoveredShipped = skills.filter((s) => s.module <= shippedMax && !taught.has(s.id));
+    ok('C-SKILLMAP', `coverage: ${taught.size} skills taught so far; ${uncoveredShipped.length} in shipped modules (≤M${shippedMax}) await content in later phases`);
   }
 }
 
