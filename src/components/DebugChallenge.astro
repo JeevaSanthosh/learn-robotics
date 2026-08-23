@@ -1,0 +1,83 @@
+---
+// Broken Robot (PRD §7.2): "the owner says it should X, but it does Y — which
+// line is wrong?" The learner PREDICTS the fault location before revealing the
+// fix, and the first guess feeds the debug.firstTry reasoning metric (§7.7).
+// Challenges come from the shared corpus so verify.mjs can count and validate
+// them; the mutation catalogue in src/lib/mutate.js generates more procedurally.
+import corpus from '../content/debug-challenges.json';
+
+const { id } = Astro.props;
+const c = corpus.challenges.find((x) => x.id === id);
+if (!c) throw new Error(`DebugChallenge: no challenge with id "${id}" in debug-challenges.json`);
+---
+<div class="debug-challenge card" data-answer={c.buggyLine} data-cid={c.id}>
+  <p class="eyebrow">🐛 Broken robot</p>
+  <p class="dc-claim">
+    <strong>The owner says</strong> it should {c.claim}. <strong>But</strong> {c.symptom}.
+  </p>
+  <p class="dc-ask">Which line is the bug? Point at it <em>before</em> you reveal — a first guess you have to commit to is how you learn to read code.</p>
+  <ol class="dc-lines">
+    {c.lines.map((l, i) => (
+      <li><button class="dc-line" type="button" data-n={i + 1}><code>{l}</code></button></li>
+    ))}
+  </ol>
+  <p class="dc-verdict" role="status" hidden></p>
+  <div class="dc-reveal" hidden>
+    <p><strong>Fix:</strong> {c.fix}</p>
+    <p class="dc-why">{c.why}</p>
+  </div>
+</div>
+
+<script>
+  import { recordDebugAttempt } from '../lib/progress.js';
+
+  for (const dc of document.querySelectorAll('.debug-challenge')) {
+    const answer = Number(dc.dataset.answer);
+    const verdict = dc.querySelector('.dc-verdict');
+    const reveal = dc.querySelector('.dc-reveal');
+    const lines = dc.querySelectorAll('.dc-line');
+    let firstGuess = true;
+
+    for (const btn of lines) {
+      btn.addEventListener('click', () => {
+        const correct = Number(btn.dataset.n) === answer;
+        if (firstGuess) { recordDebugAttempt(correct); firstGuess = false; }
+
+        lines.forEach((b) => b.classList.remove('wrong', 'right'));
+        btn.classList.add(correct ? 'right' : 'wrong');
+        verdict.hidden = false;
+
+        if (correct) {
+          verdict.textContent = '✅ That’s the bug — nicely spotted.';
+          reveal.hidden = false;
+          lines.forEach((b) => (b.disabled = true));
+        } else {
+          verdict.textContent = '🔎 Not that line. Trace what runs, and when — then try again.';
+        }
+      });
+    }
+  }
+</script>
+
+<style>
+  .debug-challenge { margin: 1.4rem 0; }
+  .dc-claim { margin-top: 0; }
+  .dc-ask { color: var(--ink-soft, #4a5d74); font-size: 0.95rem; }
+  .dc-lines { list-style: none; margin: 0.6rem 0; padding: 0; counter-reset: dcl; }
+  .dc-lines li { counter-increment: dcl; display: flex; align-items: stretch; }
+  .dc-line {
+    display: flex; gap: 0.7rem; align-items: baseline;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: 0.35rem 0.6rem; margin: 0.15rem 0;
+    border: 1px solid var(--grid, #d9e4ee); border-radius: 8px;
+    background: var(--card, #fff); font-family: inherit;
+  }
+  .dc-line::before { content: counter(dcl); color: var(--ink-soft, #4a5d74); font-variant-numeric: tabular-nums; min-width: 1.2em; }
+  .dc-line:hover:not(:disabled) { border-color: var(--wire, #3e6c9e); }
+  .dc-line.right { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 12%, transparent); }
+  .dc-line.wrong { border-color: var(--stop, #d1495b); background: color-mix(in srgb, var(--stop, #d1495b) 10%, transparent); }
+  .dc-line code { background: none; padding: 0; }
+  .dc-verdict { margin: 0.4rem 0; font-weight: 600; }
+  .dc-reveal { border-left: 3px solid var(--go, #2fa36b); padding-left: 0.8rem; }
+  .dc-why { color: var(--ink-soft, #4a5d74); }
+</style>

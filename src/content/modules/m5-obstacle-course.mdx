@@ -30,6 +30,12 @@ A strategy that works (there are others — find yours):
   goalText="Reach the target pad through the maze. The sensor must be part of your program — that's what makes it a robot, not a wind-up toy."
   walls='[{"x":80,"y":220,"w":200,"h":16},{"x":160,"y":100,"w":16,"h":120},{"x":240,"y":40,"w":16,"h":120}]'
   target='{"x":310,"y":50,"r":26}'
+  predict="choice"
+  predictPrompt="Before you run: will this attempt reach the target pad?"
+  predictChoices={JSON.stringify([
+    { label: "Yes — it makes it through", rule: "reachedTarget == true" },
+    { label: "No — it gets stuck or crashes", rule: "reachedTarget == false" }
+  ])}
 />
 
 **Open-ended challenge 🟠 spicy:** solve it a second, completely different way. Then imagine the walls move every run — could you write one program that solves *any* maze? (That question has kept roboticists happily busy for fifty years.)

@@ -65,6 +65,12 @@ So the `speed` <Term id="variable">variable</Term> in your program becomes a dut
   goalText="Checkpoint: reach the target pad, and do it using the set speed block. Fast is easy to start and hard to stop — find a speed you can actually steer."
   walls='[{"x":110,"y":150,"w":170,"h":16}]'
   target='{"x":300,"y":60,"r":26}'
+  predict="choice"
+  predictPrompt="Before you run: at the speed you've set, will the robot reach the pad?"
+  predictChoices={JSON.stringify([
+    { label: "Yes — it reaches the pad", rule: "reachedTarget == true" },
+    { label: "No — too fast to steer, or it stalls short", rule: "reachedTarget == false" }
+  ])}
 />
 
 <Quiz

@@ -581,6 +581,56 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
     : ok('C-WORLDS', 'every world referenced by a lesson exists');
 }
 
+// ---------- C-PREDICT: every R2+ graded lab commits a prediction ------------
+// Predict-then-run is required from rigor 2 (PRD §6.1 L3, §7.1). A graded lab
+// (a RobotLab whose goal isn't 'free') in an R2+ lesson must carry predict +
+// predictPrompt, or the reasoning layer has nothing to measure.
+{
+  let checked = 0;
+  for (const l of lessons) {
+    const rigor = Number(l.raw.match(/^rigor:\s*(\d+)/m)?.[1] || 0);
+    if (rigor < 2) continue;
+    for (const m of l.raw.matchAll(/<RobotLab\b[\s\S]*?\/>/g)) {
+      const lab = m[0];
+      const g = lab.match(/goal=["']([^"']+)["']/)?.[1] || 'free';
+      if (g === 'free') continue;
+      checked++;
+      const hasPredict = /predict=["'](choice|number)["']/.test(lab) && /predictPrompt=/.test(lab);
+      hasPredict
+        ? ok('C-PREDICT', `${l.slug} (R${rigor}, goal ${g}) commits a prediction before Run`)
+        : bad('C-PREDICT', `${l.slug} is R${rigor} with a graded lab (goal ${g}) but has no predict/predictPrompt`);
+    }
+  }
+  if (!checked) ok('C-PREDICT', 'no R2+ graded labs to check');
+}
+
+// ---------- C-DEBUG: the debug-challenge corpus is real and referenced ------
+// Phase 2 requires >= 20 debug challenges (PRD §17 Phase 2 exit). Validate the
+// corpus and that any challenge a lesson embeds actually exists.
+{
+  let corpus = null;
+  try { corpus = JSON.parse(await readFile(path.join(ROOT, 'src/content/debug-challenges.json'), 'utf8')); }
+  catch { bad('C-DEBUG', 'src/content/debug-challenges.json missing or invalid JSON'); }
+  if (corpus) {
+    const ch = corpus.challenges || [];
+    const skillIds = new Set((JSON.parse(await readFile(path.join(ROOT, 'src/content/skills.json'), 'utf8')).skills || []).map((s) => s.id));
+    ch.length >= 20 ? ok('C-DEBUG', `${ch.length} debug challenges (>= 20 required)`) : bad('C-DEBUG', `only ${ch.length} debug challenges, need >= 20`);
+    const dupes = ch.map((c) => c.id).filter((id, i, a) => a.indexOf(id) !== i);
+    dupes.length ? bad('C-DEBUG', `duplicate challenge ids: ${[...new Set(dupes)].join(', ')}`) : ok('C-DEBUG', 'challenge ids are unique');
+    const badLine = ch.filter((c) => !Array.isArray(c.lines) || c.lines.length < 3 || !(c.buggyLine >= 1 && c.buggyLine <= c.lines.length));
+    badLine.length ? bad('C-DEBUG', `challenges with an out-of-range buggyLine: ${badLine.map((c) => c.id).slice(0, 5).join(', ')}`) : ok('C-DEBUG', 'every buggyLine indexes a real line');
+    const badSkill = ch.flatMap((c) => (c.skills || []).filter((s) => !skillIds.has(s)).map((s) => `${c.id}:${s}`));
+    badSkill.length ? bad('C-DEBUG', `challenges reference unknown skills: ${badSkill.slice(0, 5).join(', ')}`) : ok('C-DEBUG', 'every challenge skill id exists in the graph');
+
+    const ids = new Set(ch.map((c) => c.id));
+    const missing = [];
+    for (const l of lessons)
+      for (const m of l.raw.matchAll(/<DebugChallenge\b[^>]*\bid=["']([^"']+)["']/g))
+        if (!ids.has(m[1])) missing.push(`${l.slug}→${m[1]}`);
+    missing.length ? bad('C-DEBUG', `lessons embed challenges that do not exist: ${missing.join(', ')}`) : ok('C-DEBUG', 'every embedded debug challenge exists in the corpus');
+  }
+}
+
 // ---------- report ----------------------------------------------------------
 console.log(passes.join('\n'));
 if (fails.length) {

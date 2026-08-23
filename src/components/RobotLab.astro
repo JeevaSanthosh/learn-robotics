@@ -20,6 +20,12 @@ const {
   blocks = 'all',
   required = '',
   maxBlocks = '',
+  banned = '',
+  predict = '',                 // '' | 'choice' | 'number' — predict-then-run (§7.1)
+  predictPrompt = '',
+  predictChoices = '[]',        // JSON: [{ label, rule }]  (rule like "bumped == false")
+  predictMetric = '',           // for predict="number": which run metric to compare
+  predictTolerance = '',        // for predict="number": ± tolerance
 } = Astro.props;
 ---
 <section
@@ -32,11 +38,26 @@ const {
   data-line={line}
   data-start={start}
   data-maxblocks={maxBlocks}
+  data-banned={banned}
   data-blocks={blocks}
   data-required={required}
   data-goaltext={goalText}
+  data-predict={predict}
+  data-predict-prompt={predictPrompt}
+  data-predict-choices={predictChoices}
+  data-predict-metric={predictMetric}
+  data-predict-tolerance={predictTolerance}
 >
   {goalText && <p class="goal"><span class="eyebrow">Your mission</span><br />{goalText}</p>}
+
+  {predict && (
+    <div class="predict" hidden>
+      <p class="eyebrow">🔮 Predict first — then run</p>
+      <p class="predict-prompt">{predictPrompt}</p>
+      <div class="predict-choices"></div>
+      <p class="predict-result" role="status" hidden></p>
+    </div>
+  )}
 
   <div class="lab-grid">
     <div class="editor-side">
@@ -53,8 +74,10 @@ const {
       <div class="controls">
         <button class="btn run">▶ Run</button>
         <button class="btn btn-quiet reset">↺ Reset</button>
+        <button class="btn btn-quiet btn-sm why" hidden>🔍 Why?</button>
       </div>
       <p class="status" role="status"></p>
+      <div class="why-out" role="status" hidden></div>
       <div class="review" hidden>
         <p class="eyebrow">Ways to make this better</p>
         <ul class="review-list"></ul>
@@ -90,9 +113,9 @@ const {
   import { defineRobotBlocks, toolboxFor, Blockly, javascriptGenerator, pythonGenerator } from '../lib/blocks.js';
   import { BlockRunner } from '../lib/interpreter.js';
   import { RobotSim } from '../lib/sim.js';
-  import { completeLesson } from '../lib/progress.js';
+  import { completeLesson, recordPrediction, recordConstraintSolve, recordMissionOutcome } from '../lib/progress.js';
   import { encodeProgram, decodeProgram } from '../lib/share.js';
-  import { reviewProgram } from '../lib/review.js';
+  import { reviewProgram, explainRun } from '../lib/review.js';
 
   defineRobotBlocks();
 
@@ -105,6 +128,13 @@ const {
     const line = JSON.parse(root.dataset.line || '[]');
     const startPose = JSON.parse(root.dataset.start || 'null');
     const maxBlocks = Number(root.dataset.maxblocks) || 0;
+    const banned = (root.dataset.banned || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+    // Predict-then-run config (§7.1). Absent on non-graded / R1 labs.
+    const predictKind = root.dataset.predict || '';
+    const predictChoices = JSON.parse(root.dataset.predictChoices || '[]');
+    const predictMetric = root.dataset.predictMetric || '';
+    const predictTolerance = Number(root.dataset.predictTolerance) || 0;
 
     const ws = Blockly.inject(root.querySelector('.blockly-host'), {
       toolbox: toolboxFor(root.dataset.blocks),
@@ -119,6 +149,107 @@ const {
     const status = root.querySelector('.status');
     const runBtn = root.querySelector('.run');
     const autoBox = root.querySelector('.autorun-box');
+
+    // ---- predict-then-run (§7.1) ----------------------------------------
+    // On a graded R2+ mission the learner commits a prediction before Run is
+    // available. A wrong prediction never fails the mission — it is recorded as
+    // the most informative outcome. The "truth" comes from the run itself,
+    // matched against a small declarative rule (no eval — CSP stays intact).
+    const predictEl = root.querySelector('.predict');
+    let prediction = null;      // committed choice index, or committed number
+    let predictScored = false;
+
+    function gateRun() {
+      const locked = !!predictKind && prediction === null;
+      runBtn.disabled = locked;
+      runBtn.title = locked ? 'Commit your prediction first' : '';
+    }
+    function commitPrediction(value, btn) {
+      prediction = value;
+      predictEl.querySelectorAll('button, input').forEach((el) => (el.disabled = true));
+      btn?.classList.add('chosen');
+      gateRun();
+    }
+    if (predictKind && predictEl) {
+      predictEl.hidden = false;
+      const host = predictEl.querySelector('.predict-choices');
+      if (predictKind === 'choice') {
+        predictChoices.forEach((c, i) => {
+          const b = document.createElement('button');
+          b.className = 'btn btn-sm btn-quiet predict-choice';
+          b.textContent = c.label;
+          b.addEventListener('click', () => commitPrediction(i, b));
+          host.appendChild(b);
+        });
+      } else if (predictKind === 'number') {
+        const input = document.createElement('input');
+        input.type = 'number'; input.step = 'any'; input.className = 'predict-num';
+        const b = document.createElement('button');
+        b.className = 'btn btn-sm'; b.textContent = 'Lock in';
+        b.addEventListener('click', () => { if (input.value !== '') commitPrediction(Number(input.value), b); });
+        host.append(input, b);
+      }
+      gateRun();
+    }
+
+    // The run metrics a prediction rule / the explainer read.
+    function runMetrics() {
+      return {
+        bumped: sim.bumped, reachedTarget: sim.reachedTarget, blinkCount: sim.blinkCount,
+        lineAccuracy: sim.lineAccuracy, distanceFromStart: sim.distanceFromStart,
+        distance: sim.readDistance(), visited: sim.visited.size,
+      };
+    }
+    // A tiny, safe rule evaluator: "name OP value" only. No eval, no Function.
+    function evalRule(rule, m) {
+      const mt = String(rule).match(/^\s*(\w+)\s*(==|!=|>=|<=|>|<)\s*(true|false|-?\d+(?:\.\d+)?)\s*$/);
+      if (!mt) return false;
+      const [, key, op, raw] = mt;
+      const actual = m[key];
+      const val = raw === 'true' ? true : raw === 'false' ? false : Number(raw);
+      switch (op) {
+        case '==': return actual === val; case '!=': return actual !== val;
+        case '>=': return actual >= val; case '<=': return actual <= val;
+        case '>': return actual > val; case '<': return actual < val;
+      }
+      return false;
+    }
+    function scorePrediction() {
+      if (!predictKind || prediction === null || predictScored) return;
+      predictScored = true;
+      const m = runMetrics();
+      const resEl = predictEl.querySelector('.predict-result');
+      let correct = false, actualText = '';
+      if (predictKind === 'choice') {
+        const actualIdx = predictChoices.findIndex((c) => evalRule(c.rule, m));
+        correct = actualIdx === prediction;
+        actualText = actualIdx >= 0 ? predictChoices[actualIdx].label : 'something else';
+      } else {
+        const actual = m[predictMetric];
+        correct = Math.abs(actual - prediction) <= predictTolerance;
+        actualText = typeof actual === 'number' ? actual.toFixed(2) : String(actual);
+      }
+      resEl.hidden = false;
+      resEl.textContent = correct
+        ? `✅ Your prediction matched — actually: ${actualText}.`
+        : `🔎 Not what happened — actually: ${actualText}. A wrong prediction is the most useful kind; you just learned something you didn't know 30 seconds ago.`;
+      recordPrediction(correct);
+    }
+
+    // ---- "Why did that happen?" — the rules-based run explainer (§8.8) ---
+    const whyBtn = root.querySelector('.why');
+    const whyOut = root.querySelector('.why-out');
+    whyBtn?.addEventListener('click', () => {
+      const ex = explainRun(sim.trace, {
+        goal, bumped: sim.bumped, reachedTarget: sim.reachedTarget, target, lineAccuracy: sim.lineAccuracy,
+      });
+      if (!ex) { whyOut.hidden = true; return; }
+      whyOut.hidden = false;
+      whyOut.innerHTML = '';
+      const s = document.createElement('strong');
+      s.textContent = ex.title + '. ';
+      whyOut.append(s, document.createTextNode(ex.detail));
+    });
 
     // ---- load: shared link wins over the saved local workspace ----------
     const wsKey = `lr-ws-${lessonId}`;
@@ -279,6 +410,10 @@ const {
 
     async function execute(isAuto) {
       if (running) return;
+      if (predictKind && prediction === null) {
+        if (!isAuto) setStatus('🔮 Lock in your prediction first — then press Run.');
+        return;
+      }
       running = true;
       runBtn.disabled = true;
       root.classList.add('is-running');
@@ -287,8 +422,10 @@ const {
       try {
         await new BlockRunner(ws, sim).run();
         hasRun = true;
+        scorePrediction();
         checkGoal();
         paintReview();
+        if (whyBtn) whyBtn.hidden = false;
       } catch (err) {
         setStatus('🤔 ' + err.message);
       } finally {
@@ -304,6 +441,8 @@ const {
       sim.stop();
       setTimeout(() => sim.reset(), 50);
       setStatus('');
+      if (whyBtn) whyBtn.hidden = true;
+      if (whyOut) whyOut.hidden = true;
     });
 
     // ---- goal verification: outcome + required concepts, no shortcuts ----
@@ -426,6 +565,18 @@ const {
           return;
         }
       }
+      if (banned.length) {
+        const usedTypes = new Set(ws.getAllBlocks(false).filter((b) => b.isEnabled()).map((b) => b.type));
+        const hitBanned = banned.filter((t) => usedTypes.has(t));
+        if (hitBanned.length) {
+          setStatus(
+            '🚫 It works — but this challenge bans ' +
+              hitBanned.map((t) => FRIENDLY[t] || t).join(' and ') +
+              '. Solve it a different way; the restriction is the whole point.'
+          );
+          return;
+        }
+      }
       const missing = missingRequired();
       if (missing.length) {
         setStatus(
@@ -436,6 +587,9 @@ const {
         return;
       }
       setStatus('🎉 Mission complete! Lesson marked done.');
+      // Reasoning record: a constraint solved, and whether it needed the tutor.
+      if (maxBlocks || banned.length) recordConstraintSolve(lessonId);
+      recordMissionOutcome({ tutorUsed: !!window.__lrTutorUsed });
       completeLesson(lessonId);
     }
 
@@ -502,6 +656,27 @@ const {
 <style>
   .robotlab { margin: 1.8rem 0; }
   .goal { margin-top: 0; }
+
+  /* predict-then-run */
+  .predict {
+    margin: 0 0 1rem;
+    padding: 0.8rem 1rem;
+    border: 1px dashed var(--wire, #3e6c9e);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--wire, #3e6c9e) 6%, transparent);
+  }
+  .predict-prompt { margin: 0.2rem 0 0.6rem; font-weight: 600; }
+  .predict-choices { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .predict-choice.chosen { outline: 2px solid var(--wire, #3e6c9e); }
+  .predict-result { margin: 0.6rem 0 0; }
+  .predict-num { width: 6rem; padding: 0.3rem 0.4rem; }
+  .why-out {
+    margin: 0.6rem 0 0;
+    padding: 0.6rem 0.8rem;
+    border-left: 3px solid var(--wire, #3e6c9e);
+    background: color-mix(in srgb, var(--wire, #3e6c9e) 5%, transparent);
+    font-size: 0.95rem;
+  }
 
   .lab-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
   /* The lab used to be locked to one column inside a 46rem reading

@@ -267,3 +267,54 @@ export function reviewProgram(workspaceJson, ctx = {}) {
   // Correctness first, tidiness last; cap the list so it reads as help.
   return out.sort((a, b) => LEVELS[a.level] - LEVELS[b.level]).slice(0, 4);
 }
+
+// ---------------------------------------------------------- run-trace explainer
+// The "Why did that happen?" button (PRD §8.8). Unlike reviewProgram (which
+// reads the static program), this reads the RUN — the per-tick trace the core
+// records — and states the MECHANICAL cause from what actually happened. It is
+// deliberately rules-based, not the LLM: it must always be correct and always
+// free, and the tutor is given its output as fact so it never has to guess.
+//
+// trace: [{ tick, x, y, heading, distance }]   ctx: { goal, bumped, reachedTarget, target, lineAccuracy }
+const PX = 60;
+
+export function explainRun(trace, ctx = {}) {
+  if (!Array.isArray(trace) || trace.length < 2) return null;
+
+  if (ctx.bumped) {
+    // When did the distance reading first drop below one square before impact?
+    const warnIdx = trace.findIndex((s) => s.distance < 1);
+    const ticksBlind = warnIdx >= 0 ? trace.length - 1 - warnIdx : -1;
+    return {
+      title: 'Why it crashed',
+      detail: warnIdx >= 0
+        ? `The distance sensor read below 1 square about ${ticksBlind} step${ticksBlind === 1 ? '' : 's'} before the robot hit the wall — but it kept moving. Either the check isn't inside the loop (so it only runs once), or the threshold is smaller than the distance you actually cover between checks.`
+        : `The robot hit a wall with no low distance reading beforehand — it was driving by counting steps, not by sensing. A sensor check inside the loop ("repeat until distance < 2") would have caught it.`,
+    };
+  }
+
+  if (ctx.goal === 'reach-target' && ctx.target && !ctx.reachedTarget) {
+    let best = Infinity, at = 0;
+    trace.forEach((s, i) => {
+      const d = Math.hypot(s.x - ctx.target.x, s.y - ctx.target.y) / PX;
+      if (d < best) { best = d; at = i; }
+    });
+    const after = trace.length - 1 - at;
+    return {
+      title: 'Why it missed',
+      detail: `Closest you came to the target was ${best.toFixed(1)} squares, and that was ${after} step${after === 1 ? '' : 's'} before the program ended — so the robot reached its nearest point and then carried on past it. Stop when you arrive, or shorten the last move.`,
+    };
+  }
+
+  if (ctx.goal === 'follow-line' && typeof ctx.lineAccuracy === 'number' && ctx.lineAccuracy <= 0.75) {
+    return {
+      title: 'Why the line score is low',
+      detail: `The robot was over the line ${Math.round(ctx.lineAccuracy * 100)}% of the run. It drifts off between checks — check the line more often by making each move shorter, so a wander is corrected before it grows.`,
+    };
+  }
+
+  return {
+    title: 'What happened',
+    detail: `The robot ran for ${trace.length} steps and ended ${(Math.hypot(trace.at(-1).x - trace[0].x, trace.at(-1).y - trace[0].y) / PX).toFixed(1)} squares from where it started. Nothing obviously failed — compare where it finished with where the mission wanted it.`,
+  };
+}

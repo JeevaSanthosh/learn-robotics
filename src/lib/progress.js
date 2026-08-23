@@ -243,6 +243,83 @@ export function skillMastery() {
     .sort((a, b) => a.level - b.level || (b.right + b.wrong) - (a.right + a.wrong));
 }
 
+// --- the reasoning engine (v2, PRD §7) -------------------------------------
+// The product's stated priority is logical thinking, so the record measures it:
+// did the learner PREDICT correctly, FIND the bug first try, solve under a
+// CONSTRAINT, pass WITHOUT the tutor. These are shown on /progress as trends
+// about how you think, never as a score (§7.7). All feed the same `reasoning`
+// block the record has carried since v2.
+
+/** Which quarter of the learner's year today falls in (1–4), from yearStart. */
+export function currentQuarter(state = load()) {
+  const start = new Date(state.yearStart + 'T00:00:00Z');
+  const now = new Date();
+  const months = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + (now.getUTCMonth() - start.getUTCMonth());
+  return Math.max(1, Math.min(4, Math.floor(months / 3) + 1));
+}
+
+/** Predict-then-run: record whether the committed prediction matched (§7.1). */
+export function recordPrediction(correct) {
+  const s = load();
+  const p = s.reasoning.predictions;
+  p.total++;
+  if (correct) p.correct++;
+  const q = 'Q' + currentQuarter(s);
+  const bucket = (p.byQuarter[q] = p.byQuarter[q] || { total: 0, correct: 0 });
+  bucket.total++;
+  if (correct) bucket.correct++;
+  markActive(s);
+  save(s);
+  return s;
+}
+
+/** Broken-robot debugging: was the bug located on the first guess (§7.2)? */
+export function recordDebugAttempt(firstTryCorrect, usedHint = false) {
+  const s = load();
+  const d = s.reasoning.debug;
+  d.attempted++;
+  if (firstTryCorrect) d.firstTry++;
+  if (usedHint) d.hintsUsed++;
+  markActive(s);
+  save(s);
+  return s;
+}
+
+/** A mission passed under a block budget or a banned block (§7.3). */
+export function recordConstraintSolve(missionId) {
+  const s = load();
+  if (!s.reasoning.constraints.solved.includes(missionId)) s.reasoning.constraints.solved.push(missionId);
+  save(s);
+  return s;
+}
+
+/** A graded mission passed — with or without the tutor (§7.7 unassisted rate). */
+export function recordMissionOutcome({ tutorUsed = false } = {}) {
+  const s = load();
+  const u = s.reasoning.unassisted;
+  tutorUsed ? u.withTutor++ : u.missions++;
+  save(s);
+  return s;
+}
+
+/** A computed view of the reasoning trends, for /progress and quarterly review. */
+export function reasoningSummary(state = load()) {
+  const r = state.reasoning;
+  const rate = (a, b) => (b ? a / b : null);
+  return {
+    predictionAccuracy: rate(r.predictions.correct, r.predictions.total),
+    predictionsMade: r.predictions.total,
+    predictionByQuarter: Object.fromEntries(
+      Object.entries(r.predictions.byQuarter).map(([q, v]) => [q, rate(v.correct, v.total)])
+    ),
+    debugFirstTryRate: rate(r.debug.firstTry, r.debug.attempted),
+    debugAttempts: r.debug.attempted,
+    constraintSolves: r.constraints.solved.length,
+    unassistedRate: rate(r.unassisted.missions, r.unassisted.missions + r.unassisted.withTutor),
+    unassistedMissions: r.unassisted.missions,
+  };
+}
+
 // --- Confidence gate (locked decision made concrete) -----------------------
 // "Ready for hardware" means: every checkpoint lesson is complete AND the gate
 // quiz scored >= 80%. GATES[] and per-kit unlocks arrive in a later phase; the

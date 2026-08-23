@@ -87,6 +87,9 @@ const { lessonId = '' } = Astro.props;
     async function ask(q, mode) {
       busy = true;
       sendBtn.disabled = true;
+      // The reasoning record's "unassisted" metric counts missions passed with
+      // zero tutor messages this session (§7.7). Asking the tutor sets the flag.
+      window.__lrTutorUsed = true;
       add('you', q);
       const bubble = add('bot', '');
       bubble.classList.add('thinking');
