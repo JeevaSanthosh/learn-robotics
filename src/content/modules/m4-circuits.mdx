@@ -6,13 +6,20 @@ order: 1
 duration: 15
 checkpoint: false
 summary: "Circuits, current, and voltage — the plumbing behind every robot part."
-quarter: 2
 rigor: 2
 kind: concept
 teaches: ["elec.voltage", "elec.current", "elec.ohm"]
 ---
 import Term from '../../components/Term.astro';
 import Quiz from '../../components/Quiz.astro';
+import Hook from '../../components/Hook.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
+import WorkedExample from '../../components/WorkedExample.astro';
+
+<Hook
+  question="Why does every LED in every kit have a little resistor next to it?"
+  answer="Leave it out and the LED dies in about a second. By the end of this page you'll have burnt one out on purpose and know exactly why."
+/>
 
 Everything your simulated robot does — the LED, the motors, the sensor — runs on electricity in the real world. Three words unlock all of it.
 
@@ -24,19 +31,49 @@ A <Term id="circuit">circuit</Term> is a complete loop that electricity can flow
 
 So an <Term id="led">LED</Term> lighting up means: a battery pushes (voltage) a flow (current) around a complete loop (circuit) and through the LED, which turns some of that flow into light. That's it. That's electronics.
 
-One more part hiding in your robot: the <Term id="microcontroller">microcontroller</Term> — a tiny cheap computer whose job is to open and close many little circuits very fast. When your program says *turn LED on*, the microcontroller closes the LED's loop. Your blocks have been operating switches all along.
+<ConceptDemo
+  demo="circuit"
+  caption="Drag the battery slider up and watch the current climb. Now try the two things that surprise everyone: drop the battery to 1.5 V (the LED goes completely dark — not dim), and untick 'Resistor fitted' (it burns out). Both have the same explanation, and it's the equation below."
+/>
+
+One more part is hiding in your robot: the <Term id="microcontroller">microcontroller</Term> — a tiny cheap computer whose job is to open and close many little circuits very fast. When your program says *turn LED on*, the microcontroller closes the LED's loop. Your blocks have been operating switches all along.
 
 ## Under the hood: the one equation
 
-You now know voltage pushes and current flows. The third piece is <Term id="resistance">resistance</Term> — how hard the path fights back, measured in ohms (Ω). All three lock together in <Term id="ohms-law">Ohm's law</Term>:
+You just moved two sliders and watched a number change. That number came from one equation. The third piece is <Term id="resistance">resistance</Term> — how hard the path fights back, measured in ohms (Ω). All three lock together in <Term id="ohms-law">Ohm's law</Term>:
 
 ```
 current = voltage ÷ resistance        I = V ÷ R
 ```
 
-That is the whole thing. Try it: a 9V battery through a 470Ω resistor gives 9 ÷ 470 = 0.019 A, or about **19 mA**. Push harder (more volts) and more flows. Fight harder (more ohms) and less flows.
+That is the whole thing. Push harder (more volts) and more flows. Fight harder (more ohms) and less flows. Scroll back up and check the demo against it — the numbers are the same numbers.
 
-**Why you should care right now:** an LED will happily draw far more current than it can survive and burn itself out in about a second. So you put a resistor in series to hold the current down — that is what the little resistor next to every LED in every kit is doing. It is not decoration; it is Ohm's law keeping your LED alive.
+<WorkedExample
+  title="Choosing a resistor for a 9 V battery"
+  variant="This works out a 9 V circuit from scratch. The demo above starts at 4.5 V, and the quiz asks about 6 V — same method, three different batteries."
+  steps={[
+    {
+      do: "Write down what the LED can take.",
+      why: "A 5 mm LED wants about 20 mA and dies somewhere past 30 mA. That number is the target — everything else is arithmetic to hit it.",
+    },
+    {
+      do: "Subtract the LED's own forward voltage first: 9 − 2 = 7 V.",
+      why: "The LED itself uses up about 2 V just to conduct. Only the leftover 7 V is what the resistor is working against. This is the step people skip.",
+    },
+    {
+      do: "Try it without subtracting: 9 ÷ 470 = 19 mA. Looks right!",
+      fails: true,
+      why: "It looks right and it's wrong — it happens to land near 20 mA by luck. At 3 V that same shortcut gives 6 mA when the true answer is 2 mA, three times off. A method that only works on one example isn't a method.",
+    },
+    {
+      do: "Do it properly: 7 ÷ 470 = 0.0149 A ≈ 15 mA. Safe.",
+      code: "I = (V − V_forward) ÷ R\n  = (9 − 2) ÷ 470\n  = 0.0149 A  =  14.9 mA",
+      why: "Comfortably under 20 mA, so the LED runs cool and lasts. If you wanted it brighter you'd drop to 330 Ω and get 21 mA — near the limit, which is a choice, not an accident.",
+    },
+  ]}
+/>
+
+**Why you should care right now:** an LED will happily draw far more current than it can survive. So you put a resistor in series to hold the current down — that is what the little resistor next to every LED in every kit is doing. It is not decoration; it is Ohm's law keeping your LED alive.
 
 A quick way to sanity-check any circuit you build later:
 
@@ -46,8 +83,7 @@ A quick way to sanity-check any circuit you build later:
 | swap 470Ω for 220Ω | roughly doubles | less fight, same push |
 | forget the resistor | shoots up | almost nothing fighting it — 💥 |
 
-
-**Want to see it for real?** The resources page links SparkFun's "What is a Circuit?" — the classic illustrated walk-through, with a simulation of current flowing.
+Go back to the demo and confirm each row of that table with the sliders. If a row doesn't match what you see, trust the demo — it's running the same equation the real circuit will.
 
 <Quiz
   quizId="m4-circuits"
@@ -58,6 +94,7 @@ A quick way to sanity-check any circuit you build later:
     { "q": "When your block program turns the LED on, the microcontroller…", "options": ["paints the LED", "closes that LED's circuit", "makes new electricity"], "answer": 1, "why": "Code controls switches; switches control circuits; circuits control parts." },
     { "q": "Ohm's law says current equals…", "options": ["voltage × resistance", "voltage ÷ resistance", "resistance ÷ voltage"], "answer": 1, "why": "I = V ÷ R. More push means more flow; more resistance means less." },
     { "q": "A 6V supply through a 200Ω resistor gives roughly…", "options": ["30 mA", "1200 mA", "3 mA"], "answer": 0, "why": "6 ÷ 200 = 0.03 A = 30 mA." },
-    { "q": "Why does an LED need a resistor in series with it?", "options": ["to make it brighter", "to limit the current so it doesn't burn out", "to store charge for later"], "answer": 1, "why": "Without something to fight the flow, the current runs away and the LED dies almost instantly." }
+    { "q": "Why does an LED need a resistor in series with it?", "options": ["to make it brighter", "to limit the current so it doesn't burn out", "to store charge for later"], "answer": 1, "why": "Without something to fight the flow, the current runs away and the LED dies almost instantly." },
+    { "q": "In the demo, dropping the battery to 1.5 V made the LED go completely dark, not just dim. Why?", "options": ["the resistor absorbed all of it", "below about 2 V the LED doesn't conduct at all", "1.5 V batteries are usually flat"], "answer": 1, "why": "An LED needs a minimum push — its forward voltage — before any current flows at all. Under it, nothing happens." }
   ]}
 />

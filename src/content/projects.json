@@ -26,7 +26,15 @@
       ],
       "simMilestone": "LED pattern verified in the simulator",
       "realMilestone": null,
-      "proofTier": "T1"
+      "proofTier": "T1",
+      "state": "available",
+      "design": {
+        "required": true,
+        "bom": false,
+        "connections": false,
+        "kit": null,
+        "photoPrompts": []
+      }
     },
     {
       "id": "p02",
@@ -53,7 +61,15 @@
       ],
       "simMilestone": "Four shapes drawn from one parameter in the simulator",
       "realMilestone": null,
-      "proofTier": "T1"
+      "proofTier": "T1",
+      "state": "available",
+      "design": {
+        "required": true,
+        "bom": false,
+        "connections": false,
+        "kit": null,
+        "photoPrompts": []
+      }
     },
     {
       "id": "p03",
@@ -80,7 +96,15 @@
       ],
       "simMilestone": "Survives at least 4 of 5 seeded arenas for 60 seconds",
       "realMilestone": null,
-      "proofTier": "T1"
+      "proofTier": "T1",
+      "state": "available",
+      "design": {
+        "required": true,
+        "bom": false,
+        "connections": false,
+        "kit": null,
+        "photoPrompts": []
+      }
     },
     {
       "id": "p04",
@@ -108,7 +132,18 @@
       ],
       "simMilestone": "Drivetrain speed-vs-torque comparison verified in the simulator",
       "realMilestone": "Time three 1 m runs at different speeds and one incline test on the real chassis.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "available",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit1",
+        "photoPrompts": [
+          "The 1 m course from the side, tape measure and start line in the shot with the chassis on the line",
+          "The ramp at the steepest angle the robot still climbed, close enough to read the angle you measured"
+        ]
+      }
     },
     {
       "id": "p05",
@@ -135,7 +170,18 @@
       ],
       "simMilestone": "State machine passes seeded worlds in the simulator",
       "realMilestone": "Run the patrol-chase-recover state machine on the real micro:bit robot.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "available",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit1",
+        "photoPrompts": [
+          "The micro:bit robot in its patrol lane, with the thing it chases placed where it first spots it",
+          "The micro:bit's own LED display at the moment it switches mode, close enough to read what it shows"
+        ]
+      }
     },
     {
       "id": "p06",
@@ -162,7 +208,18 @@
       ],
       "simMilestone": "P3 rewritten in text passes the sim grader",
       "realMilestone": "Flash the ported text program and have the real robot avoid a physical obstacle.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit1",
+        "photoPrompts": [
+          "The real obstacle you tested against, with the robot stopped at its turning distance and a ruler showing the gap",
+          "The distance sensor on the front of the robot, close enough to see how high and how level it is mounted"
+        ]
+      }
     },
     {
       "id": "p07",
@@ -189,7 +246,18 @@
       ],
       "simMilestone": "Line accuracy reaches the target in the simulator",
       "realMilestone": "Tune the line follower to hit both accuracy and time targets on the real course.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit1",
+        "photoPrompts": [
+          "The whole line course from above, start and finish marks both in the frame",
+          "The line sensor array from underneath, close enough to see each sensor and its height above the tape"
+        ]
+      }
     },
     {
       "id": "p08",
@@ -216,7 +284,18 @@
       ],
       "simMilestone": "Returns within tolerance across seeded worlds in the simulator",
       "realMilestone": "Complete three measured out-and-back runs on the real robot within your stated tolerance.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit1",
+        "photoPrompts": [
+          "The start mark with your tolerance circle drawn around it and the robot parked where it actually finished",
+          "The tape measure spanning the start mark and the robot's end position, with the reading legible"
+        ]
+      }
     },
     {
       "id": "p09",
@@ -243,7 +322,18 @@
       ],
       "simMilestone": "Solves at least 8 of 10 unseen maze seeds in the simulator",
       "realMilestone": "Solve a tape maze on the floor with the real robot (stretch goal), captured on video.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit2",
+        "photoPrompts": [
+          "The tape maze on the floor from above, the whole layout in frame with the entrance marked",
+          "The robot stopped at a junction, close enough to see which sensor is facing which wall"
+        ]
+      }
     },
     {
       "id": "p10",
@@ -270,7 +360,18 @@
       ],
       "simMilestone": "Target tracked above the threshold in the simulator",
       "realMilestone": "Track a coloured target with the real camera and keep it centred on video.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit2",
+        "photoPrompts": [
+          "The camera on the robot, close enough to see how it is mounted and which way it points",
+          "One of your five failure conditions as it happens, with the target still somewhere in the frame"
+        ]
+      }
     },
     {
       "id": "p11",
@@ -298,7 +399,18 @@
       ],
       "simMilestone": "Classifier reaches the threshold on held-out data in the simulator",
       "realMilestone": "Collect a labelled dataset from the real robot and train a classifier on it.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit2",
+        "photoPrompts": [
+          "The sensing rig you collected the data with, set up exactly as it was for one of your classes",
+          "The same rig with a different class in place, so the two collection setups can be compared"
+        ]
+      }
     },
     {
       "id": "p12",
@@ -326,7 +438,18 @@
       ],
       "simMilestone": "Capstone prototype verified in the simulator",
       "realMilestone": "Build, tune, and demonstrate your self-specified capstone robot on real hardware.",
-      "proofTier": "T2"
+      "proofTier": "T2",
+      "state": "planned",
+      "design": {
+        "required": true,
+        "bom": true,
+        "connections": true,
+        "kit": "kit2",
+        "photoPrompts": [
+          "The whole robot, from the side, with something familiar next to it for scale",
+          "The wiring, close enough to see which wire goes to which pin"
+        ]
+      }
     }
   ]
 }

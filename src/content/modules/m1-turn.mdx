@@ -6,16 +6,25 @@ order: 3
 duration: 15
 checkpoint: true
 summary: "Steer the robot onto the target pad using moves and turns."
-quarter: 1
 rigor: 1
 kind: lab
 teaches: ["act.drive", "logic.order"]
 ---
 import RobotLab from '../../components/RobotLab.astro';
+import Expect from '../../components/Expect.astro';
 
 The robot always starts in the bottom-left corner, facing up. Your mission: park it on the dashed target pad.
 
 Plan it like directions to a friend: *go forward this much, turn, go forward again…*
+
+<Expect
+  lessonId="m1-turn"
+  time="15 min"
+  goal="The robot finishes standing on the target pad in the top-right."
+  done={["It ends up on the pad, not beside it","You used a turn block to change direction","You can say roughly how far it travels before it turns"]}
+  notDone={["Driving in a straight line and hoping the pad is in the way"]}
+  stuck="Break it into two questions: which way does it need to face, and how far does it go once it is facing that way?"
+/>
 
 <RobotLab
   lessonId="m1-turn"

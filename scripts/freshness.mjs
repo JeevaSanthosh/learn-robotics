@@ -14,14 +14,39 @@ const TODAY = new Date().toISOString().slice(0, 10);
 
 const { GROQ_API_KEY, BRAVE_API_KEY, YOUTUBE_API_KEY } = process.env;
 
-const ResourceSchema = z.object({
-  title: z.string().min(3).max(140),
-  url: z.string().url(),
-  type: z.enum(['video', 'docs', 'tool', 'article']),
-  published: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  checked: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  why: z.string().min(10).max(300),
-});
+const WHEN = ['before', 'during', 'after', 'stuck', 'further'];
+
+const ResourceSchema = z
+  .object({
+    title: z.string().min(3).max(140),
+    // null is only legal for an entry a human still has to source — see the
+    // status refinement below. Never let the LLM invent a URL to fill a gap.
+    url: z.string().url().nullable(),
+    status: z.literal('needs-url').optional(),
+    type: z.enum(['video', 'docs', 'tool', 'article']),
+    // Contextual schema v2: a resource is attached to a lesson and a moment.
+    lesson: z.string().min(2).nullable(),
+    when: z.enum(WHEN),
+    minutes: z.number().int().positive().max(600),
+    published: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    checked: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    why: z.string().min(10).max(300),
+    adds: z.string().min(10).max(300),
+    // Forward declaration of a local asset; remote images are never allowed.
+    thumb: z
+      .string()
+      .regex(/^\/thumbs\/[a-z0-9-]+\.webp$/)
+      .nullable(),
+  })
+  .refine((r) => r.url !== null || r.status === 'needs-url', {
+    message: 'a null url is only allowed on an entry marked "status": "needs-url"',
+    path: ['url'],
+  })
+  .refine((r) => (r.type === 'video' && r.url !== null ? r.thumb !== null : r.thumb === null), {
+    message:
+      'a video with a url requires a local thumb path; every other entry must have thumb: null',
+    path: ['thumb'],
+  });
 
 main().catch((e) => {
   console.error(e);
@@ -33,11 +58,23 @@ async function main() {
   const allowed = data.allowedDomains ?? [];
   let changed = false;
 
+  // --- 0. VALIDATE what is already on disk ----------------------------
+  // The file is hand-edited as well as machine-edited, so check the whole
+  // thing against the schema before touching anything. 'needsUrl' holds
+  // fully-specified entries whose link a human still has to supply.
+  validateOnDisk(data, allowed);
+
   for (const [moduleId, items] of Object.entries(data.modules)) {
     console.log(`\n## Module ${moduleId}`);
 
     // --- 1. VERIFY: deterministic liveness checks ----------------------
     for (const item of items) {
+      if (item.url === null) {
+        // Not dead — pending. Nothing to fetch, and nothing to report as broken.
+        item._alive = true;
+        console.log(`  --   (needs-url) ${item.title}`);
+        continue;
+      }
       const alive = await checkAlive(item.url);
       item._alive = alive;
       item.checked = TODAY;
@@ -59,7 +96,10 @@ async function main() {
       if (proposal) {
         // --- 4. VALIDATE: schema + allowlist, or reject wholesale ------
         const parsed = z.array(ResourceSchema).safeParse(proposal);
-        if (parsed.success && parsed.data.every((r) => domainAllowed(r.url, allowed))) {
+        // A null url is allowed only on a needs-url entry (the schema already
+        // enforces that pairing); everything else must clear the allowlist.
+        const linksOk = (r) => r.url === null || domainAllowed(r.url, allowed);
+        if (parsed.success && parsed.data.every(linksOk)) {
           data.modules[moduleId] = parsed.data.map((r) => ({ ...r, checked: TODAY }));
           changed = true;
           console.log(`  -> LLM proposed ${parsed.data.length} resources (validated)`);
@@ -81,6 +121,36 @@ async function main() {
 }
 
 // ---------------------------------------------------------------------------
+// Every entry in the file, from both `modules` and the `needsUrl` holding area,
+// as [bucket, moduleId, index, entry].
+function allEntries(data) {
+  const out = [];
+  for (const bucket of ['modules', 'needsUrl'])
+    for (const [moduleId, items] of Object.entries(data[bucket] ?? {}))
+      items.forEach((item, i) => out.push([bucket, moduleId, i, item]));
+  return out;
+}
+
+function validateOnDisk(data, allowed) {
+  const problems = [];
+  for (const [bucket, moduleId, i, item] of allEntries(data)) {
+    const where = `${bucket}.${moduleId}[${i}] "${item.title ?? '(untitled)'}"`;
+    const parsed = ResourceSchema.safeParse(item);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues)
+        problems.push(`${where}: ${issue.path.join('.') || '(root)'} — ${issue.message}`);
+      continue;
+    }
+    if (item.url !== null && !domainAllowed(item.url, allowed))
+      problems.push(`${where}: host not in allowedDomains — ${item.url}`);
+  }
+  if (problems.length) {
+    console.error('resources.json failed schema validation:\n  ' + problems.join('\n  '));
+    process.exit(1);
+  }
+  console.log(`resources.json: ${allEntries(data).length} entries valid.`);
+}
+
 function domainAllowed(url, allowed) {
   try {
     const host = new URL(url).hostname;
@@ -140,7 +210,10 @@ ${JSON.stringify(candidates, null, 2)}
 Return the ideal resource list for this module as a JSON array. Rules:
 - Prefer keeping current alive resources unless a candidate is clearly better for a beginner teen.
 - Remove dead resources; replace them only with a genuinely suitable candidate.
-- Each item: {"title","url","type"("video"|"docs"|"tool"|"article"),"published"(YYYY-MM-DD, estimate if unknown),"checked"("${TODAY}"),"why"(one sentence, why it suits a beginner teen)}.
+- NEVER invent a URL. If a slot needs filling and you have no real link, emit the entry with "url": null and "status": "needs-url" so a human can source it.
+- Third-party block editors and simulators are always "when": "further" — never offered mid-lesson.
+- Each item: {"title","url"(string or null),"type"("video"|"docs"|"tool"|"article"),"lesson"(a lesson slug this supports, or null for the whole module),"when"("before"|"during"|"after"|"stuck"|"further"),"minutes"(integer),"published"(YYYY-MM-DD, estimate if unknown),"checked"("${TODAY}"),"why"(one sentence, why it suits a beginner teen),"adds"(one sentence: what this gives that the lesson itself cannot),"thumb"("/thumbs/<slug>.webp" for a video with a url, otherwise null)}.
+- Keep the "lesson", "when", "minutes", "adds" and "thumb" values of resources you are keeping unchanged.
 - Respond with ONLY the JSON array. No markdown fences, no commentary.`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {

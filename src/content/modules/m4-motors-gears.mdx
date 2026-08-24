@@ -6,7 +6,6 @@ order: 2
 duration: 15
 checkpoint: true
 summary: "Why robots trade speed for strength — and your first variable."
-quarter: 2
 rigor: 2
 kind: concept
 teaches: ["act.gear-ratio", "act.torque"]
@@ -14,6 +13,15 @@ teaches: ["act.gear-ratio", "act.torque"]
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
 import Quiz from '../../components/Quiz.astro';
+import Hook from '../../components/Hook.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
+import Expect from '../../components/Expect.astro';
+import WorkedExample from '../../components/WorkedExample.astro';
+
+<Hook
+  question="Why can't my robot just have a fast motor AND a strong one?"
+  answer="Because you only get to choose where on the slider to sit — and below you can slide it yourself and watch the same motor either climb a hill or get nowhere."
+/>
 
 A <Term id="motor">motor</Term> spins fast but weakly. A robot wheel needs the opposite: slower, stronger turning. The fix is one of the oldest tricks in engineering: <Term id="gear">gears</Term>.
 
@@ -39,7 +47,12 @@ ratio = teeth on driven gear ÷ teeth on driving gear
 
 A 10-tooth motor gear turning a 40-tooth wheel gear is 40 ÷ 10 = **4:1**. The wheel turns **4× slower** and with roughly **4× more torque**. Reverse them and you get 1:4 — four times faster, a quarter the strength.
 
-There is no free lunch here, and the reason is <Term id="power">power</Term>:
+<ConceptDemo
+  demo="gears"
+  caption="Set the driver to 10 teeth and the driven to 40 and read the ratio — it should say 4:1, exactly the sum above. Now the experiment that matters: watch the hill verdict while you drag the driven gear down to 10. Same motor, same power, and it stops being able to climb. Then wind the motor speed down and find the setting where it climbs but crawls."
+/>
+
+Try to break it: there is no combination that is both fast and strong. That is not a limitation of this simulation — it is the reason gearboxes exist at all, and the reason is <Term id="power">power</Term>:
 
 ```
 power ≈ torque × speed
@@ -47,7 +60,32 @@ power ≈ torque × speed
 
 Gears slide the balance between torque and speed. They never increase the product. If a robot can't climb a ramp, gearing down 4:1 will get it up — and it will also crawl on the flat afterwards. That trade is the entire job of a drivetrain designer.
 
-**Working it out for a real robot:** say your motor spins 200 rpm and you want the wheel at 50 rpm. You need 200 ÷ 50 = 4:1, so pair a 10-tooth with a 40-tooth. You've just done drivetrain design.
+Check that against the demo — the speed and torque readouts move in opposite directions, and their product never budges.
+
+<WorkedExample
+  title="Picking gears for a 200 rpm motor"
+  variant="This works backwards from a target wheel speed. The quiz below goes the other way — it gives you the teeth and asks for the ratio — and the demo above lets you check either."
+  steps={[
+    {
+      do: "Write down what you have and what you want: motor 200 rpm, wheel wanted at 50 rpm.",
+      why: "Drivetrain design almost always starts from the wheel, not the motor. You know how fast the robot should move; the motor is whatever you were given.",
+    },
+    {
+      do: "Divide to get the ratio you need: 200 ÷ 50 = 4, so 4:1.",
+      why: "Ratio is how much slower you need the output to be. Four times slower means 4:1, and it also means about four times the torque — that part comes free.",
+    },
+    {
+      do: "Pick the teeth the wrong way round: a 40-tooth driver into a 10-tooth driven.",
+      fails: true,
+      why: "That is 10 ÷ 40 = 1:4 — you have geared UP and made the wheel spin at 800 rpm, sixteen times off target and far too weak to climb anything. Set the demo to 40 into 10 and watch the hill verdict fail. Driven divided by driving; getting it backwards is the classic first mistake.",
+    },
+    {
+      do: "Do it the right way round: a 10-tooth driver into a 40-tooth driven gear.",
+      code: "ratio = driven ÷ driving\n      = 40 ÷ 10\n      = 4:1        →  wheel at 50 rpm, ~4× torque",
+      why: "Small gear drives big gear. You have just done drivetrain design — and if the robot still can't climb, you now know exactly which number to change and what it will cost you.",
+    },
+  ]}
+/>
 
 ## Under the hood: how "set speed" actually works
 
@@ -56,6 +94,22 @@ A motor has no volume knob. It is on or off. So how does *set speed to 2* mean a
 The microcontroller switches the motor on and off **very fast** — thousands of times a second — and varies how much of each cycle is "on". That fraction is called the duty cycle, and the technique is <Term id="pwm">PWM</Term>. 50% on means roughly half power; the motor's own inertia smooths the pulsing into steady spinning.
 
 So the `speed` <Term id="variable">variable</Term> in your program becomes a duty-cycle percentage on real hardware. The block you've been dragging maps to a real, specific electrical behaviour.
+
+<Expect
+  lessonId="m4-motors-gears"
+  time="10 min"
+  goal="The robot reaches the target pad, driving at a speed you chose with the set speed block."
+  done={[
+    "It finishes on the pad, not skidding past it",
+    "A set speed block is in the program and the speed is a value you picked deliberately",
+    "You predicted the outcome before running, and can say why you were right or wrong",
+  ]}
+  notDone={[
+    "Leaving the speed at the default and hoping — if you did not choose the number, you did not do the exercise",
+    "Nudging the speed up and down at random until one run happens to land",
+  ]}
+  stuck="Fast is easy to start and hard to stop. If you keep overshooting the pad, what does that tell you about which half of the speed/control trade you are sitting on?"
+/>
 
 <RobotLab
   lessonId="m4-motors-gears"

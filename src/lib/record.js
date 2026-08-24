@@ -53,7 +53,10 @@ export function emptyRecord(now = new Date()) {
   return {
     version: SCHEMA_VERSION,
     createdAt: iso,
-    yearStart: day, // rolling from first launch; drives the week plan (§20 Q5)
+    // First-launch date. Kept ONLY as the anchor for the activity heatmap — no
+    // progress value is derived from it any more (PRD-UX §5.2, C-NOCAL): pacing
+    // comes from modules completed (`currentStage`), never from the calendar.
+    yearStart: day,
     pace: 'standard', // standard | relaxed | intense
 
     lessons: {}, // slug -> { completedAt, attempts, timeMs }
@@ -63,7 +66,7 @@ export function emptyRecord(now = new Date()) {
     skills: {}, // id -> { right, wrong, level, lastSeen, nextReview }
 
     reasoning: {
-      predictions: { total: 0, correct: 0, byQuarter: {} },
+      predictions: { total: 0, correct: 0, byStage: {} },
       debug: { attempted: 0, firstTry: 0, hintsUsed: 0 },
       constraints: { solved: [] },
       unassisted: { missions: 0, withTutor: 0 },
@@ -88,6 +91,42 @@ export function emptyRecord(now = new Date()) {
       theme: 'auto', autoRun: true, telemetry: false,
       noiseDefault: true, reducedMotion: false,
     },
+  };
+}
+
+// --- The empty per-project record -------------------------------------------
+// `projects` above starts empty; this is the shape written the first time a
+// learner touches project pNN (progress.js `ensureProject`). Keeping it here
+// rather than inline in the browser layer means migration and validate() know
+// the shape too.
+//
+// The stages, in order: design (think before you build) -> sim -> build ->
+// evidence -> review.
+//   design.approach / design.unsureAbout — what you intend to build, and what
+//     you are not sure about yet. Written BEFORE building; `lockedAt` stamps
+//     the moment it was committed to, so a design cannot be quietly rewritten
+//     after the fact to match whatever got built.
+//   design.bom — the bill of materials: [{ part, qty, notes }]-ish rows.
+//   design.connections — the wiring plan: [{ from, to, notes }]-ish rows.
+//   build.photos — evidence photos (see the hard constraint below).
+//   build.matches / build.changes — where the real build matched the design,
+//     and where it had to change. The gap is the learning.
+//
+// ⚠ HARD CONSTRAINT — build.photos entries hold ONLY a reference, never image
+// bytes. The shape is { id, w, h, addedAt } where `id` is an IndexedDB key
+// string; the actual image lives in IndexedDB. The whole record is
+// JSON.stringify'd into a SINGLE localStorage key (~5 MB total for the origin)
+// and exported as one JSON file. A base64-encoded phone photo is 3–8 MB on its
+// own, so inlining even one would make save() throw mid-write and silently stop
+// persisting progress from then on — losing the year, not just the photo. Do
+// not "helpfully" add a `data`/`dataUrl`/`src`/`bytes` field here; validate()
+// rejects those on purpose.
+export function emptyProjectRecord() {
+  return {
+    status: 'not-started', simPassedAt: null, entryUrl: null,
+    verifiedAt: null, verifyTier: null, rubric: {}, probes: [], attestation: null,
+    design: { lockedAt: null, approach: '', unsureAbout: '', bom: [], connections: [] },
+    build: { photos: [], matches: [], changes: [] },
   };
 }
 
@@ -144,6 +183,7 @@ export function migrate(raw, now = new Date()) {
 function normalize(raw, base) {
   const out = { ...base, ...raw, version: SCHEMA_VERSION };
   out.reasoning = deepDefaults(raw.reasoning, base.reasoning);
+  out.reasoning.predictions = stagesFromQuarters(out.reasoning.predictions);
   out.gates = deepDefaults(raw.gates, base.gates);
   out.hardware = { ...base.hardware, ...(raw.hardware || {}) };
   out.settings = { ...base.settings, ...(raw.settings || {}) };
@@ -151,7 +191,51 @@ function normalize(raw, base) {
     out[k] = raw[k] && typeof raw[k] === 'object' ? raw[k] : {};
   for (const k of ['assessments', 'activeDays', 'exercises', 'badges', 'logbook'])
     out[k] = Array.isArray(raw[k]) ? raw[k] : [];
+  // Project records written before the design/build stages existed get the new
+  // sub-objects back-filled, same as any other field added since v2 shipped.
+  out.projects = Object.fromEntries(
+    Object.entries(out.projects).map(([pid, p]) => [pid, normalizeProjectRecord(p)])
+  );
   return out;
+}
+
+// Back-fill one project record. Key order comes from emptyProjectRecord(), with
+// any extra keys the record already carries (e.g. `results`) kept on the end —
+// which is what keeps the export round-trip byte-identical (C-BACKUP).
+function normalizeProjectRecord(p) {
+  const base = emptyProjectRecord();
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return base;
+  const out = { ...base, ...p };
+  out.design = deepDefaults(p.design, base.design);
+  out.build = deepDefaults(p.build, base.build);
+  return out;
+}
+
+// Forward migration WITHIN v2 (PRD-UX §5.2, C-NOCAL). Predictions used to be
+// bucketed by wall-clock quarter (`byQuarter: {Q1..Q4}`); they are now bucketed
+// by curriculum stage (`byStage: {S1..S4}`), which is derived from modules
+// completed. Q1→S1 … Q4→S4 one-to-one, carrying {total, correct} across; the
+// counts are summed in case both shapes are present. Dropping `byQuarter` is
+// what makes this idempotent — a second pass finds nothing left to move.
+// No SCHEMA_VERSION bump: migrate() has exactly one legacy branch (v1, which is
+// version-less), so bumping to 3 would push every stored v2 record down the v1
+// path and shred it. Additive/renaming v2 changes are absorbed here, the same
+// way every field added since v2 shipped has been.
+function stagesFromQuarters(predictions) {
+  const old = predictions.byQuarter;
+  delete predictions.byQuarter;
+  if (!old || typeof old !== 'object') return predictions;
+  if (!predictions.byStage || typeof predictions.byStage !== 'object') predictions.byStage = {};
+  for (const [key, v] of Object.entries(old)) {
+    const m = /^Q([1-4])$/.exec(key);
+    if (!m || !v || typeof v !== 'object') continue;
+    const prev = predictions.byStage['S' + m[1]] || { total: 0, correct: 0 };
+    predictions.byStage['S' + m[1]] = {
+      total: (prev.total || 0) + (v.total || 0),
+      correct: (prev.correct || 0) + (v.correct || 0),
+    };
+  }
+  return predictions;
 }
 
 function deepDefaults(value, defaults) {
@@ -246,6 +330,26 @@ export function validate(record) {
     if (!isObj(s)) continue;
     req(Number.isInteger(s.level) && s.level >= 0 && s.level <= MAX_LEVEL, `skill ${id} level out of range`);
     req(typeof s.right === 'number' && typeof s.wrong === 'number', `skill ${id} missing right/wrong counts`);
+  }
+
+  // Project records: the design and build stages must be present and the right
+  // shape, and a build photo must be a REFERENCE — see emptyProjectRecord().
+  for (const [pid, p] of Object.entries(record.projects || {})) {
+    req(isObj(p), `project ${pid} must be an object`);
+    if (!isObj(p)) continue;
+    req(isObj(p.design), `project ${pid} design must be an object`);
+    req(isObj(p.build), `project ${pid} build must be an object`);
+    if (isObj(p.design))
+      for (const k of ['bom', 'connections'])
+        req(Array.isArray(p.design[k]), `project ${pid} design.${k} must be an array`);
+    if (!isObj(p.build)) continue;
+    for (const k of ['photos', 'matches', 'changes'])
+      req(Array.isArray(p.build[k]), `project ${pid} build.${k} must be an array`);
+    for (const ph of Array.isArray(p.build.photos) ? p.build.photos : []) {
+      req(isObj(ph) && typeof ph.id === 'string', `project ${pid} build photo must be { id, w, h, addedAt }`);
+      req(isObj(ph) && !['data', 'dataUrl', 'src', 'bytes', 'blob'].some((k) => k in ph),
+        `project ${pid} build photo must reference IndexedDB by id — image bytes must never be stored in the record`);
+    }
   }
 
   return { ok: errors.length === 0, errors };

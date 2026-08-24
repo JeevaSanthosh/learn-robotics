@@ -6,7 +6,6 @@ order: 1
 duration: 15
 checkpoint: false
 summary: "Meet the distance sensor and the if-block: the robot's first decisions."
-quarter: 1
 rigor: 2
 kind: concept
 teaches: ["sense.range"]
@@ -14,10 +13,16 @@ teaches: ["sense.range"]
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
 import Quiz from '../../components/Quiz.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
 
 Until now, your robot followed orders blindly. Time to give it senses.
 
 The green **distance to wall** block is a <Term id="sensor">sensor</Term> — it reports a *number*: how many squares of empty space are ahead. Numbers alone do nothing; the magic is pairing them with a <Term id="conditional">conditional</Term> — an **if** block: *if the distance is bigger than 2 → move.*
+
+<ConceptDemo
+  demo="loop"
+  caption="Here is the if-block, before you build one. Park the stepper on DECIDE and drag the wall across the red stop line — the robot never changes, only the number does, and the answer flips with it. That flip is the whole of 'decide'."
+/>
 
 <RobotLab
   lessonId="m3-sensing"

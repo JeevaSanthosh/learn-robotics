@@ -6,17 +6,43 @@ order: 1
 duration: 15
 checkpoint: false
 summary: "Programs don't just run — they respond. Meet the event block."
-quarter: 2
 rigor: 3
 kind: concept
 teaches: ["logic.event", "logic.interrupt"]
 ---
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
+import Hook from '../../components/Hook.astro';
+import Expect from '../../components/Expect.astro';
+import Quiz from '../../components/Quiz.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
+
+<Hook
+  question="How does a robot notice something the instant it happens, instead of finding out later?"
+  answer="It stops asking and starts being told. That swap is the difference between a bump sensor that works and one that misses half the bumps."
+/>
 
 Real robot programs don't start "at the top." They wait for something to *happen* — a button press, a timer, a sensor tripping — and respond. Each happening is an <Term id="event">event</Term>.
 
 You've been using one all along without seeing it: every program so far ran *when you pressed Run*. Now the block for it exists — the hat-shaped **when ▶ Run is pressed** block. From here on, hang your program under a hat, like Scratch and micro:bit do. Stacks without a hat won't run.
+
+On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.
+
+<Expect
+  lessonId="m5-events"
+  time="12 min"
+  goal="One program, hung under a 'when Run is pressed' hat, that blinks hello once and then drives onto the target pad."
+  done={[
+    "Every block you want to run is connected underneath the hat block",
+    "The LED blinks once before the robot moves, not at the same time",
+    "The robot finishes on the pad",
+    "You predicted the outcome before running it",
+  ]}
+  notDone={[
+    "Leaving the stack loose next to the hat — it will look right and do nothing at all",
+  ]}
+  stuck="If nothing happens when you press Run, look at the very top of your stack. What is your first block actually attached to?"
+/>
 
 <RobotLab
   lessonId="m5-events"
@@ -34,13 +60,16 @@ You've been using one all along without seeing it: every program so far ran *whe
   ])}
 />
 
-On a real micro:bit you'd have more hats: *when button A pressed*, *when shaken*, *when it hears a loud sound*. One robot, many little programs, each waiting for its moment. That's how all modern software works — including the app you're reading this in.
-
 ## Under the hood: events vs. asking repeatedly
 
 In the last module you wrote a loop that checks a sensor over and over. That's <Term id="polling">polling</Term>, and it has a cost: the robot can only notice things as often as the loop comes round, and one slow step delays *everything*.
 
 Real microcontrollers offer the alternative: an <Term id="interrupt">interrupt</Term>. The hardware watches a pin itself, and the moment it changes, the processor drops what it's doing, runs a short handler, and returns to where it was. Your "when ▶ Run is pressed" block is the friendly face of exactly this.
+
+<ConceptDemo
+  demo="polling"
+  caption="Start with the defaults and read the verdict: the knock is caught, but late. Now drag the check interval out past 40 ms and watch the knock vanish entirely — the robot looked either side of it and saw nothing both times. Then switch the interrupt on. Note what happens to the checks-per-second at the same time."
+/>
 
 | | Polling | Interrupt / event |
 |---|---|---|
@@ -49,3 +78,13 @@ Real microcontrollers offer the alternative: an <Term id="interrupt">interrupt</
 | Best for | values that drift slowly (distance, temperature) | sudden things (bump switch, button, timer) |
 
 **The design rule:** poll for things that change smoothly, use events for things that *happen*. A bump sensor read by polling will miss a fast knock; a temperature read by interrupt would fire constantly for no reason.
+
+<Quiz
+  quizId="m5-events"
+  questions={[
+    { "q": "Your program's blocks are sitting next to the hat block, not under it. What happens when you press Run?", "options": ["it runs anyway", "nothing runs", "only the first block runs"], "answer": 1, "why": "A hat block is what tells the stack underneath it when to start. Nothing attached means nothing told to run — and it looks completely fine on screen, which is why this catches everyone once." },
+    { "q": "You want to catch a quick knock on a bump switch. Polling or interrupt?", "options": ["polling — check it every loop", "interrupt — let the hardware tell you"], "answer": 1, "why": "A knock can start and finish between two passes of your loop. An interrupt fires the moment the pin changes, so it cannot be missed." },
+    { "q": "You want to watch the temperature of a motor that heats up over minutes. Polling or interrupt?", "options": ["polling — it drifts slowly", "interrupt — react instantly"], "answer": 0, "why": "Nothing sudden ever happens to it, so checking now and then is free and simple. An interrupt here would fire constantly for no benefit." },
+    { "q": "What does polling actually cost you?", "options": ["battery only", "CPU time spent asking, plus a delay set by how slow your loop is", "nothing at all"], "answer": 1, "why": "You pay twice: the asking itself, and the gap between asks. One slow step in the loop delays every check in it." }
+  ]}
+/>

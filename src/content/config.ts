@@ -10,7 +10,6 @@ const modules = defineCollection({
     duration: z.number(), // minutes, keep 10-20
     checkpoint: z.boolean().default(false), // counts toward the confidence gate
     summary: z.string(),
-    quarter: z.number().min(1).max(4).optional(),        // 1-4, which quarter (§5.3)
     rigor: z.number().min(1).max(5).optional(),          // R1-R5 rigor level (§6)
     kind: z.enum(['concept', 'lab', 'challenge', 'quiz']).optional(),
     teaches: z.array(z.string()).default([]),            // skill ids taught (see skills.json)

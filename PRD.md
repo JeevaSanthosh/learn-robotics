@@ -149,7 +149,7 @@ Classrooms, cohorts, teachers, multiple learners on one browser, competition tea
 | # | Goal | Measure of success |
 |---|---|---|
 | PG1 | A teen can work through a full year without an instructor | 12 modules completable solo; no lesson requires an adult except purchases and one soldering step |
-| PG2 | Reasoning improves measurably, not just recall | Prediction accuracy and debug-first-try rate both trend up across quarters (§7.7) |
+| PG2 | Reasoning improves measurably, not just recall | Prediction accuracy and debug-first-try rate both trend up across stages (§7.7) |
 | PG3 | Simulation converts into real builds | ≥8 of 12 projects have a physical component with evidence by month 12 |
 | PG4 | Standards visibly rise | Every module declares a rigor level; month-8 pass criteria are strictly stricter than month-2 (§6) |
 | PG5 | Interest survives | ≥26 active weeks out of 52; no module with a >3-week stall |
@@ -220,16 +220,20 @@ Every row must be taught (a lesson), assessed (a generator template), and used (
 | Debugging as a discipline | every module | debugging | every project |
 | Version control and documenting your work | M1 onward (portfolio) | — (proof-based) | every project |
 
-### 5.3 Year shape
+### 5.3 Course shape
 
-| Quarter | Months | Title | Question it answers | Rigor | Hardware |
+> **Amended 2026-08-23 (product-owner decision).** Calendar time is no longer a unit of progress. Quarters became **stages**, months and weeks were removed, and a learner who is ready to move on moves on. `PRD-UX.md` §5.2 is the normative specification; this section is its curriculum-side reflection. This amendment *extends* the intent already stated in §12 — *"Quarter boundaries are **not** gates. A learner who wants to run ahead into M7 should be allowed to"* — by removing the clock that made the boundaries look binding in the first place.
+
+| Stage | Modules | Title | Question it answers | Rigor | Hardware |
 |---|---|---|---|---|---|
-| Q1 | 1–3 | **Make it move** | How do I make a machine do what I say? | R1 → R2 | none (sim only) → **Gate A** |
-| Q2 | 4–6 | **Understand the machine** | What is it actually made of, and how do I talk to it in real code? | R2 → R3 | micro:bit + chassis → **Gate B** |
-| Q3 | 7–9 | **Make it accurate** | Why is it wobbly, lost, and stupid — and how do I fix each? | R3 → R4 | ESP32/Arduino |
-| Q4 | 10–12 | **Make it smart** | How does it perceive, learn, and hold together as a system? | R4 → R5 | ESP32(-CAM) |
+| S1 | M1–M3 | **Make it move** | How do I make a machine do what I say? | R1 → R2 | none (sim only) → **Gate A** |
+| S2 | M4–M6 | **Understand the machine** | What is it actually made of, and how do I talk to it in real code? | R2 → R3 | micro:bit + chassis → **Gate B** |
+| S3 | M7–M9 | **Make it accurate** | Why is it wobbly, lost, and stupid — and how do I fix each? | R3 → R4 | ESP32/Arduino |
+| S4 | M10–M12 | **Make it smart** | How does it perceive, learn, and hold together as a system? | R4 → R5 | ESP32(-CAM) |
 
-Each module is **4 weeks**: 3 weeks of lessons (4–5 lessons), 1 week of project. Weeks 13, 26, 39, 52 are **consolidation weeks** — no new content, a mixed assessment, a quarterly review page, and a "show someone" prompt. This gives the year 12 modules + 4 slack weeks and absorbs a fortnight of lost interest without breaking the plan.
+Each module is **4–5 lessons plus one project**, and takes exactly as long as it takes. There is no weekly plan, no schedule, and nothing is ever overdue. After each stage there is a **consolidation step** — no new content, a mixed assessment at that stage's rigor level, a stage-review page, and a "show someone" prompt. It is reached by finishing S*n*, not by arriving at week 13.
+
+The only thing in the product that waits on elapsed time is the **review drill**, which becomes due when a skill's `nextReview` comes round. Lessons, projects, and gates are never time-gated (`C-NOCAL`).
 
 ### 5.4 Module specifications
 
@@ -563,7 +567,7 @@ A `reasoning` block in the learner record (§11.3), surfaced on `/progress` and 
 
 | Metric | Definition | Target trend |
 |---|---|---|
-| Prediction accuracy | correct predictions ÷ predictions made, by quarter | Rising, or holding as difficulty rises |
+| Prediction accuracy | correct predictions ÷ predictions made, by stage | Rising, or holding as difficulty rises |
 | Debug first-try rate | debug challenges located correctly on first guess | Rising |
 | Constraint solves | missions passed under a block budget or ban | Accumulating |
 | Unassisted rate | missions passed with zero tutor messages | Rising |
@@ -824,7 +828,7 @@ Each widget is a self-contained Astro component with no dependencies beyond canv
 
 ### 10.3 Interactivity in the shell
 
-- **Roadmap → year plan:** a 52-week calendar showing where you are, what's this week, what's overdue, and how much slack remains. Clicking a week shows its lessons.
+- **Roadmap → Progress Board:** the module track (`PRD-UX.md` §5.3) showing where you are, what's next, and what the gates are. Nothing is dated and nothing is overdue.
 - **This-week card:** on every page load — three items maximum, one of which is a review drill.
 - **`/progress`:** existing heatmap and mastery, plus the reasoning trends (§7.7), project cards with evidence links, and a quarter-review link.
 - **Seed chips** on every graded run (§8.6).
@@ -857,7 +861,7 @@ Each widget is a self-contained Astro component with no dependencies beyond canv
 {
   "version": 2,
   "createdAt": "2026-09-01T09:00:00Z",
-  "yearStart": "2026-09-01",           // drives the week plan
+  "yearStart": "2026-09-01",           // activity heatmap only — never paces anything
   "pace": "standard",                   // standard | relaxed | intense
 
   "lessons":  { "m1-meet": { "completedAt": "…", "attempts": 1, "timeMs": 540000 } },
@@ -879,7 +883,7 @@ Each widget is a self-contained Astro component with no dependencies beyond canv
   },
 
   "reasoning": {
-    "predictions": { "total": 64, "correct": 41, "byQuarter": { "Q1": 0.52, "Q2": 0.67 } },
+    "predictions": { "total": 64, "correct": 41, "byStage": { "S1": 0.52, "S2": 0.67 } },
     "debug":       { "attempted": 22, "firstTry": 13, "hintsUsed": 6 },
     "constraints": { "solved": [ "m2-fewer-blocks", "m5-no-repeat" ] },
     "unassisted":  { "missions": 31, "withTutor": 12 },
@@ -1070,7 +1074,7 @@ New conditions for `scripts/verify.mjs`, in the project's established style. Exi
 
 | ID | Condition |
 |---|---|
-| C-MODULES | Exactly 12 modules; each has 4–5 lessons plus one project; every lesson has `module`, `order`, `quarter`, `rigor`, `kind`, `teaches` |
+| C-MODULES | Exactly 12 modules; each has 4–5 lessons plus one project; every lesson has `module`, `order`, `rigor`, `kind`, `teaches`. **`quarter` is NOT required and NOT permitted** — see `C-NOCAL` (§5.3 amendment) |
 | C-COVERAGE | Every row of the §5.2 topic matrix maps to ≥1 lesson, ≥1 assessment template, ≥1 project |
 | C-SKILLMAP | Every skill in `skills.json` is taught, assessed and used; every `requires` is taught in an earlier module; no orphan skills in any direction |
 | C-DURATION | No lesson exceeds 40 minutes; module total ≤ 150 minutes of lessons |

@@ -10,7 +10,7 @@
 
 import {
   PROGRESS_KEY, LEGACY_KEY, BACKUP_KEY,
-  emptyRecord, migrate, validate, decayDue,
+  emptyRecord, emptyProjectRecord, migrate, validate, decayDue,
   applySkillEvent, dueSkills, serialize, deserialize,
   TOPIC_TO_SKILLS,
 } from './record.js';
@@ -250,12 +250,30 @@ export function skillMastery() {
 // about how you think, never as a score (§7.7). All feed the same `reasoning`
 // block the record has carried since v2.
 
-/** Which quarter of the learner's year today falls in (1–4), from yearStart. */
-export function currentQuarter(state = load()) {
-  const start = new Date(state.yearStart + 'T00:00:00Z');
-  const now = new Date();
-  const months = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + (now.getUTCMonth() - start.getUTCMonth());
-  return Math.max(1, Math.min(4, Math.floor(months / 3) + 1));
+// Stages replace quarters (PRD-UX §5.2, C-NOCAL). A stage is a position in the
+// CURRICULUM, not in the calendar: three modules each, S1 = m1–m3, S2 = m4–m6,
+// S3 = m7–m9, S4 = m10–m12. The old currentQuarter() read wall-clock months
+// since yearStart, so a learner who finished five modules in three weeks filed
+// every prediction under Q1 (one bar on a panel whose whole point is movement),
+// and a learner who paused four months advanced a stage having learned nothing.
+export const MODULES_PER_STAGE = 3;
+export const STAGE_COUNT = 4;
+
+/**
+ * The learner's stage, 'S1'–'S4'. PURE: no Date arithmetic, no clock — it is a
+ * function of completed lessons only. The stage is the one containing the
+ * HIGHEST module the learner has any completed lesson in; 'S1' when nothing is
+ * complete. Lesson ids carry their module in the slug (`m3-sensing` -> 3).
+ */
+export function currentStage(state = load()) {
+  let highest = 0;
+  for (const slug of Object.keys(state.lessons || {})) {
+    const m = /^m(\d+)(?:-|$)/.exec(slug);
+    if (m) highest = Math.max(highest, Number(m[1]));
+  }
+  if (highest < 1) return 'S1';
+  const stage = Math.ceil(highest / MODULES_PER_STAGE);
+  return 'S' + Math.max(1, Math.min(STAGE_COUNT, stage));
 }
 
 /** Predict-then-run: record whether the committed prediction matched (§7.1). */
@@ -264,8 +282,8 @@ export function recordPrediction(correct) {
   const p = s.reasoning.predictions;
   p.total++;
   if (correct) p.correct++;
-  const q = 'Q' + currentQuarter(s);
-  const bucket = (p.byQuarter[q] = p.byQuarter[q] || { total: 0, correct: 0 });
+  const stage = currentStage(s);
+  const bucket = (p.byStage[stage] = p.byStage[stage] || { total: 0, correct: 0 });
   bucket.total++;
   if (correct) bucket.correct++;
   markActive(s);
@@ -309,8 +327,8 @@ export function reasoningSummary(state = load()) {
   return {
     predictionAccuracy: rate(r.predictions.correct, r.predictions.total),
     predictionsMade: r.predictions.total,
-    predictionByQuarter: Object.fromEntries(
-      Object.entries(r.predictions.byQuarter).map(([q, v]) => [q, rate(v.correct, v.total)])
+    predictionByStage: Object.fromEntries(
+      Object.entries(r.predictions.byStage || {}).map(([stage, v]) => [stage, rate(v.correct, v.total)])
     ),
     debugFirstTryRate: rate(r.debug.firstTry, r.debug.attempted),
     debugAttempts: r.debug.attempted,
@@ -381,10 +399,7 @@ export function allGateStatus() {
 // holds one boolean per rubric `field` from projects.json (C-RUBRIC).
 
 function ensureProject(s, pid) {
-  return (s.projects[pid] = s.projects[pid] || {
-    status: 'not-started', simPassedAt: null, entryUrl: null,
-    verifiedAt: null, verifyTier: null, rubric: {}, probes: [], attestation: null,
-  });
+  return (s.projects[pid] = s.projects[pid] || emptyProjectRecord());
 }
 
 export function projectRecord(pid) {

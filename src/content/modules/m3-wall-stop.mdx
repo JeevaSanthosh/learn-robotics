@@ -6,7 +6,6 @@ order: 2
 duration: 20
 checkpoint: true
 summary: "The robot must stop itself near the wall — sensor-decided, not step-counted."
-quarter: 1
 rigor: 2
 kind: lab
 teaches: ["sense.threshold", "logic.conditional"]
@@ -14,6 +13,14 @@ teaches: ["sense.threshold", "logic.conditional"]
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
 import DebugChallenge from '../../components/DebugChallenge.astro';
+import Hook from '../../components/Hook.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
+import Expect from '../../components/Expect.astro';
+
+<Hook
+  question="Why does a robot crash into a wall it can clearly see?"
+  answer="Because 'seeing' is one number, checked now and then, and the robot keeps moving in between. Every crash in this lesson comes from one of those three things."
+/>
 
 Here's the mission every robot vacuum, drone, and self-driving car starts with: **approach the wall, stop before touching it.**
 
@@ -24,6 +31,21 @@ The catch: you could just count squares and move exactly that far. But that's *y
 3. The **sensor block must make the decision** — the mission won't count without it.
 
 The cleanest tool is the **repeat until** block: *repeat until distance ≤ 1 → move a little.* Little steps, checking the sensor between each one.
+
+<Expect
+  lessonId="m3-wall-stop"
+  time="20 min"
+  goal="The robot stops itself about one square from the wall — because the sensor said so, not because you counted."
+  done={[
+    "It stops with a visible gap, never touching the wall",
+    "The distance block is what decides when to stop",
+    "It still works if the wall starts somewhere else",
+  ]}
+  notDone={[
+    "Moving forward a fixed number of squares that happens to land correctly this once — move the wall and it crashes",
+  ]}
+  stuck="If it stops too late, you have three suspects: how often you check, how big your threshold is, and whether the sensor can see the wall at all. Which one would a bigger step size make worse?"
+/>
 
 <RobotLab
   lessonId="m3-wall-stop"
@@ -48,11 +70,15 @@ Your program compares a reading against a number — that number is the <Term id
 
 - **Stopping distance.** The robot keeps moving after you decide to stop. Faster robot, bigger threshold.
 - **Check rate.** Between two checks the robot is blind. This loop is <Term id="polling">polling</Term>: read, decide, move, repeat. Move too far per pass and you can sail straight past your own threshold.
+<ConceptDemo
+  demo="loop"
+  caption="This is the same sense→decide→act loop from lesson one, but now you are choosing the threshold. Park it on DECIDE and drag the stop line: notice that the robot's behaviour changes without the robot changing at all. Then set the wall to 11 cm and the stop line to 10 — one centimetre of margin. That is the gap your robot has to stop in."
+/>
+
 - **Angle.** A distance sensor measures along one narrow line. A wall approached at a sharp angle reflects the signal *away* instead of back, so the reading stays large right up until the crash.
 
-That last one is why real robots carry several sensors pointing different ways. A single sensor doesn't give you "the distance to the wall" — it gives you "the distance along this one line, if something reflects".
 
-**The habit worth forming:** whenever a sensor-driven robot misbehaves, ask the three questions in order — *was it checked often enough, was the threshold big enough, and could the sensor actually see the thing?*
+The angle problem is why real robots carry several sensors pointing different ways. A single sensor doesn't give you "the distance to the wall" — it gives you "the distance along this one line, if something reflects".
 
 ## Spot the bug
 
@@ -60,11 +86,22 @@ Here's a program from another learner. It should stop before the wall, but it do
 
 <DebugChallenge id="dbg-distance-read-once" />
 
+**The habit worth forming:** whenever a sensor-driven robot misbehaves, ask the three questions in order — *was it checked often enough, was the threshold big enough, and could the sensor actually see the thing?*
+
 ## Bonus: don't crash — six worlds, one program
 
 Counting squares works right up until the wall moves. Here's the real test of a robot: **the same program has to work when the world changes.** This mission grades your program across **six worlds** where the wall sits at a different distance each time. Pass at least five without crashing.
 
 A memorised "move forward N" can't win this — it'll crash where the wall is closer and stop short where it's farther. Only *sensing* survives all six.
+
+<Expect
+  lessonId="m3-dont-crash"
+  time="15 min"
+  goal="One program that stops before the wall in all six worlds — where the wall is a different distance away each time."
+  done={["It passes at least five of the six worlds","You did not change the program between worlds","It stops short of the wall in the world where the wall is closest"]}
+  notDone={["Tuning the number of moves until one particular world passes — the other five are the test"]}
+  stuck="A program that works in one world and fails in another is reading something it should not be trusting. What does your program know before it starts moving, and what can it only find out by looking?"
+/>
 
 <RobotLab
   lessonId="m3-dont-crash"

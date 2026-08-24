@@ -378,6 +378,156 @@ const resources = JSON.parse(await readFile(path.join(ROOT, 'public/resources.js
   }
 }
 
+// ---------- C-INTERACTIVE / C-CONCEPT-VISUAL / C-PROSE-BREAK / C-EXPECT ----
+// PRD-UX §2.2. These were the measured failures: 0 images site-wide, two
+// lessons (m1-meet, m4-circuits) with no interactive element at all, and a
+// longest unbroken prose run of 674 words. Written as conditions so the ~46
+// lessons still to be authored inherit the standard instead of rediscovering it.
+{
+  // A lesson "breaks" a prose run with any of these. A markdown table is NOT
+  // counted: it is still reading, and treating it as a break was the tempting
+  // way to make m5-events pass without actually fixing it.
+  const BREAKER = /^\s*<(RobotLab|Quiz|DebugChallenge|ConceptDemo|WorkedExample|Expect|Hook|VideoCard|MarkDone)\b/;
+  const PROSE_LIMIT = 150;
+
+  const body = (raw) => raw.split(/^---$/m).slice(2).join('---');
+
+  /** Longest run of prose words with no intervening visual/interactive element. */
+  const longestRun = (raw) => {
+    let run = 0, max = 0, fence = false, inComponent = 0;
+    for (const line of body(raw).split(/\r?\n/)) {
+      if (/^```/.test(line)) { fence = !fence; continue; }
+      if (fence || /^\s*import\s/.test(line)) continue;
+      if (BREAKER.test(line)) { max = Math.max(max, run); run = 0; inComponent = 1; }
+      if (inComponent) { if (/\/>\s*$/.test(line) || /^\s*<\//.test(line)) inComponent = 0; continue; }
+      if (/^\s*\|/.test(line)) continue; // table rows are not prose, but do not reset the run
+      run += (line.trim().match(/\S+/g) || []).length;
+    }
+    return Math.max(max, run);
+  };
+
+  const dead = [], blind = [], wordy = [], unexpected = [];
+  for (const l of lessons) {
+    const b = body(l.raw);
+    if (!BREAKER.test(b) && !/<(RobotLab|Quiz|DebugChallenge|ConceptDemo|WorkedExample|MarkDone)\b/.test(b)) dead.push(l.slug);
+    if (/^kind:\s*concept/m.test(l.raw) && !/<ConceptDemo\b/.test(b)) blind.push(l.slug);
+    const run = longestRun(l.raw);
+    if (run > PROSE_LIMIT) wordy.push(`${l.slug} (${run}w)`);
+    // Every graded lab must state its definition of done first. A `free`
+    // sandbox is exempt — there is nothing to be graded against.
+    for (const m of b.matchAll(/<RobotLab\b[\s\S]*?\/>/g)) {
+      const goal = m[0].match(/goal="([^"]*)"/)?.[1];
+      if (!goal || goal === 'free') continue;
+      const before = b.slice(0, m.index);
+      if (!/<Expect\b[\s\S]*?\/>\s*$/.test(before.trimEnd())) unexpected.push(`${l.slug} (${goal})`);
+    }
+  }
+
+  dead.length
+    ? bad('C-INTERACTIVE', `prose-only lesson(s): ${dead.join(', ')}`)
+    : ok('C-INTERACTIVE', `all ${lessons.length} lessons contain something to do`);
+  blind.length
+    ? bad('C-CONCEPT-VISUAL', `concept lesson(s) with nothing to manipulate: ${blind.join(', ')}`)
+    : ok('C-CONCEPT-VISUAL', 'every concept lesson has a ConceptDemo');
+  wordy.length
+    ? bad('C-PROSE-BREAK', `unbroken prose over ${PROSE_LIMIT}w: ${wordy.join(', ')}`)
+    : ok('C-PROSE-BREAK', `no lesson runs past ${PROSE_LIMIT} words without a visual`);
+  unexpected.length
+    ? bad('C-EXPECT', `graded lab with no <Expect> before it: ${unexpected.join(', ')}`)
+    : ok('C-EXPECT', 'every graded lab states its definition of done first');
+}
+
+// ---------- C-EXAMPLE: a worked example teaches, it does not spoil ---------
+{
+  const bad_ = [];
+  for (const l of lessons) {
+    for (const m of l.raw.matchAll(/<WorkedExample\b[\s\S]*?\/>/g)) {
+      const block = m[0];
+      if (!/variant=/.test(block)) bad_.push(`${l.slug}: no variant`);
+      // The component throws at build time without these, but a condition
+      // states the rule where a future author will actually read it.
+      if (!/fails:\s*true/.test(block)) bad_.push(`${l.slug}: no failing step`);
+      const whys = [...block.matchAll(/\bwhy:/g)].length;
+      const dos = [...block.matchAll(/\bdo:/g)].length;
+      if (whys < dos) bad_.push(`${l.slug}: ${dos - whys} step(s) with no reasoning`);
+    }
+  }
+  bad_.length
+    ? bad('C-EXAMPLE', bad_.join('; '))
+    : ok('C-EXAMPLE', 'every worked example names its variant, shows a failure, and explains each step');
+}
+
+// ---------- C-NOCAL: progress is never derived from wall-clock time --------
+// Product-owner decision (PRD.md §5.3 amendment, PRD-UX.md §5.2): an eager
+// learner who finishes a module in four days has succeeded, not mis-scheduled.
+//
+// This is enforced rather than merely intended because the old design was a
+// live defect, not just a framing choice: currentQuarter() bucketed reasoning
+// data by months-since-yearStart, so a learner who cleared five modules in
+// three weeks had every prediction filed under Q1 and the "trends as you grow"
+// panel rendered a single bar. Stages are derived from modules completed.
+{
+  const quarterInFrontmatter = lessons.filter((l) => /^quarter:/m.test(l.raw.split(/^---$/m)[1] ?? ''));
+  quarterInFrontmatter.length
+    ? bad('C-NOCAL', `quarter: still declared in ${quarterInFrontmatter.map((l) => l.slug).join(', ')}`)
+    : ok('C-NOCAL', 'no lesson declares a quarter');
+
+  const schemas = ['src/content.config.ts', 'src/content/config.ts'];
+  const schemaHits = [];
+  for (const f of schemas) {
+    const src = await readFile(path.join(ROOT, f), 'utf8');
+    if (/^\s*quarter\s*:/m.test(src)) schemaHits.push(f);
+  }
+  schemaHits.length
+    ? bad('C-NOCAL', `quarter still in content schema: ${schemaHits.join(', ')}`)
+    : ok('C-NOCAL', 'quarter is absent from both content schemas');
+
+  // yearStart may still exist (the activity heatmap is legitimately about
+  // dates) but nothing that computes PROGRESS may read it.
+  const stripped = progressSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  /currentQuarter|byQuarter/.test(stripped)
+    ? bad('C-NOCAL', 'progress.js still references currentQuarter/byQuarter')
+    : ok('C-NOCAL', 'progress.js has no quarter machinery left');
+
+  // The specific arithmetic that caused the defect: months elapsed since a
+  // stored start date. If this pattern comes back, so does the bug.
+  /yearStart[\s\S]{0,400}?getUTCMonth|getUTCMonth[\s\S]{0,400}?yearStart/.test(stripped)
+    ? bad('C-NOCAL', 'progress.js derives a value from months elapsed since yearStart')
+    : ok('C-NOCAL', 'no progress value is derived from elapsed months');
+}
+
+// ---------- C-STAGE: the stage is a pure function of modules completed -----
+{
+  const { currentStage, MODULES_PER_STAGE, STAGE_COUNT } = await import('../src/lib/progress.js');
+  const rec = (slugs, yearStart) => ({
+    ...emptyRecord(new Date('2026-01-01T00:00:00Z')),
+    yearStart,
+    lessons: Object.fromEntries(slugs.map((s) => [s, { completedAt: null, attempts: 1, timeMs: 0 }])),
+  });
+
+  const ladderOk = [
+    [[], 'S1'], [['m1-meet'], 'S1'], [['m3-sensing'], 'S1'],
+    [['m4-circuits'], 'S2'], [['m6-x'], 'S2'], [['m7-x'], 'S3'],
+    [['m9-x'], 'S3'], [['m10-x'], 'S4'], [['m12-x'], 'S4'],
+  ].every(([slugs, want]) => currentStage(rec(slugs, '2026-01-01')) === want);
+  ladderOk
+    ? ok('C-STAGE', `modules map to stages ${MODULES_PER_STAGE} at a time, S1–S${STAGE_COUNT}`)
+    : bad('C-STAGE', 'the module→stage ladder is wrong');
+
+  // The whole point: the answer must not move when only the clock moves.
+  const slugs = ['m1-meet', 'm4-circuits'];
+  const sprinter = currentStage(rec(slugs, '2026-08-01')); // started days ago
+  const idler = currentStage(rec(slugs, '2019-01-01')); // started years ago
+  sprinter === idler
+    ? ok('C-STAGE', 'the stage ignores yearStart entirely')
+    : bad('C-STAGE', `stage moved with the clock: ${sprinter} vs ${idler}`);
+
+  // Highest module wins, regardless of order or how many are complete.
+  currentStage(rec(['m5-events', 'm1-meet'], '2026-01-01')) === 'S2'
+    ? ok('C-STAGE', 'the stage follows the highest module reached')
+    : bad('C-STAGE', 'the stage does not follow the highest module');
+}
+
 // ---------- C-MIGRATE: v1 -> v2 is idempotent and lossless -----------------
 // The record holds a whole year of work; an upgrade that drops or corrupts it
 // is the worst bug the product can ship (PRD §11.6, R9). The pure record layer
