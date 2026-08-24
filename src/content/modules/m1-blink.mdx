@@ -6,17 +6,26 @@ order: 2
 duration: 15
 checkpoint: true
 summary: "Your first program: make the robot's light blink three times."
-quarter: 1
 rigor: 1
 kind: lab
 teaches: ["act.led", "core.sequence"]
 ---
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
+import Expect from '../../components/Expect.astro';
 
 Time to write your first program. Drag blocks from the tray into the workspace, snap them together top-to-bottom, and hit **Run**. The robot runs your blocks in order, like a recipe.
 
 One shortcut worth knowing: a <Term id="loop">loop</Term> repeats the same steps so you don't have to drag them three times. Try the `repeat` block!
+
+<Expect
+  lessonId="m1-blink"
+  time="15 min"
+  goal="The robot's LED blinks on and off three times — three clear flashes you can count."
+  done={["You can count exactly three flashes, not two and a half","There is a gap between each flash, so they read as separate","An LED block is doing the work"]}
+  notDone={["Turning the LED on and leaving it on — that is one long flash, not three"]}
+  stuck="If your flashes run together into one blur, what is missing between turning the LED off and turning it on again?"
+/>
 
 <RobotLab
   lessonId="m1-blink"

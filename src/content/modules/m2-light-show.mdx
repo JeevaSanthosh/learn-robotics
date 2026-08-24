@@ -6,16 +6,25 @@ order: 2
 duration: 10
 checkpoint: false
 summary: "Loops + the LED + wait = rhythm. Make the robot flash a 6-blink pattern."
-quarter: 1
 rigor: 1
 kind: lab
 teaches: ["logic.loop.counted", "logic.parameterise"]
 ---
 import RobotLab from '../../components/RobotLab.astro';
+import Expect from '../../components/Expect.astro';
 
 Loops aren't just for moving. Anything the robot *does* can repeat — including its light.
 
 A blink is really four steps: **on → wait → off → wait**. Put those in a loop and you've built a rhythm machine.
+
+<Expect
+  lessonId="m2-light-show"
+  time="10 min"
+  goal="Six blinks, produced by a repeat loop rather than by dragging twelve blocks."
+  done={["You can count six flashes","A repeat block is doing the repeating","Changing the loop's number changes how many blinks you get"]}
+  notDone={["Dragging out on/off pairs twelve times — it looks identical when it runs, and it is the thing this lesson exists to replace"]}
+  stuck="You already built one blink last lesson. What is the smallest piece that repeats, and how many times does it need to happen?"
+/>
 
 <RobotLab
   lessonId="m2-light-show"

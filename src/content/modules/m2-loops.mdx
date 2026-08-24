@@ -6,17 +6,26 @@ order: 1
 duration: 15
 checkpoint: true
 summary: "Use a repeat loop to walk a zig-zag path with just three blocks."
-quarter: 1
 rigor: 1
 kind: lab
 teaches: ["logic.loop.counted"]
 ---
 import Term from '../../components/Term.astro';
 import RobotLab from '../../components/RobotLab.astro';
+import Expect from '../../components/Expect.astro';
 
 Look at the arena below: the path to the target zig-zags — forward, turn, forward, turn… the *same two moves over and over*.
 
 You could drag eight blocks. Or you could teach the robot the **pattern** once and say "do that 4 times." That's a <Term id="loop">loop</Term>, and it's the single most-used idea in all of programming.
+
+<Expect
+  lessonId="m2-loops"
+  time="15 min"
+  goal="The robot reaches the target pad, and a loop does the repeating work."
+  done={["It finishes on the pad","A repeat block is doing the work, not a long stack of moves","The pattern inside the loop is one leg of the journey"]}
+  notDone={["A flat list of move and turn blocks with no loop — the mission will not count it"]}
+  stuck="Trace the path with your finger. What is the shortest piece of it that happens over and over?"
+/>
 
 <RobotLab
   lessonId="m2-loops"

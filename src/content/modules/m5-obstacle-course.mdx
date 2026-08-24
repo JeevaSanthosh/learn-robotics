@@ -6,12 +6,12 @@ order: 2
 duration: 20
 checkpoint: true
 summary: "Everything at once: sense, decide, loop, act — navigate the maze to the pad."
-quarter: 2
 rigor: 3
 kind: challenge
 teaches: ["debug.trace", "debug.isolate"]
 ---
 import RobotLab from '../../components/RobotLab.astro';
+import Expect from '../../components/Expect.astro';
 
 This is the one. A walled course, a target pad, and every block you've earned.
 
@@ -21,6 +21,15 @@ A strategy that works (there are others — find yours):
 
 1. Repeat until you're on the pad-ish side: **if** space ahead → move; **else** → turn.
 2. Blink the LED when you arrive, because victory laps matter.
+
+<Expect
+  lessonId="m5-obstacle-course"
+  time="20 min"
+  goal="The robot navigates the maze to the target pad, deciding with its sensor as it goes."
+  done={["It reaches the pad without getting stuck on a wall","The distance block is what decides when to turn","It is reacting to what it reads, not to a route you memorised"]}
+  notDone={["A fixed sequence of moves and turns that happens to fit this maze — that is a wind-up toy, and the mission says so"]}
+  stuck="You have every piece already: sense, decide, loop, act. Which one tells you it is time to turn?"
+/>
 
 <RobotLab
   lessonId="m5-obstacle-course"

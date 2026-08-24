@@ -7,6 +7,11 @@ export function getStaticPaths() {
 }
 const { project } = Astro.props;
 const num = project.id.slice(1);
+// A project is only startable once its module has lessons to build it from.
+// `state` comes from src/content/projects.json; a planned project still shows
+// its brief (it is worth reading ahead) but every action is off, because there
+// is nowhere to go and do the work yet.
+const planned = project.state === 'planned';
 ---
 <Base title={project.title}>
   <p class="eyebrow"><a href="/projects/">← All projects</a> · Project {num} · Module {project.module}</p>
@@ -15,6 +20,14 @@ const num = project.id.slice(1);
     <span class="status-chip" id="status">—</span>
   </div>
   <p class="rigor-chip">Rigor R{project.rigor} · {project.realMilestone ? 'sim → real build' : 'simulator only'} · Proof tier {project.proofTier}+</p>
+
+  {planned && (
+    <section class="card planned-note">
+      <h2>Not startable yet</h2>
+      <p>Module {project.module} hasn't been written yet, so there is no lesson or simulator to build this in. The brief below is real and won't change — read it if you want to know where you're heading — but every button on this page is switched off until Module {project.module} ships.</p>
+      <p><a class="btn btn-quiet" href="/">See the modules that are ready</a></p>
+    </section>
+  )}
 
   <section class="card">
     <h2>The brief</h2>
@@ -35,16 +48,16 @@ const num = project.id.slice(1);
       <h2>1 · Pass the sim milestone</h2>
       <p>{project.simMilestone}</p>
       <p class="muted">Build it in the simulator on the module page first — you don't take anything to the real world until it works in the fake one.</p>
-      <button class="btn" id="sim-done">Mark sim milestone passed</button>
+      <button class="btn" id="sim-done" disabled={planned}>{planned ? `Available when Module ${project.module} ships` : 'Mark sim milestone passed'}</button>
     </li>
 
     <li class="card step">
       <h2>2 · Generate your portfolio entry</h2>
       <p>This makes a ready-to-commit <code>README.md</code> for <code>projects/{project.id}-{project.title.toLowerCase().replace(/\s+/g, '-')}/</code> in your repo — pre-filled with the brief, the rubric checklist, and your results. You fill in the "why does this work?" parts.</p>
       <p>
-        <button class="btn" id="gen">Generate entry</button>
+        <button class="btn" id="gen" disabled={planned}>Generate entry</button>
         <a class="btn btn-quiet" id="zip" hidden download>⬇ Download .zip</a>
-        <button class="btn btn-quiet" id="copy" hidden>Copy markdown</button>
+        <button class="btn btn-quiet" id="copy" hidden disabled={planned}>Copy markdown</button>
       </p>
       <pre class="entry-out" id="entry" hidden><code></code></pre>
       <p class="muted">Then commit it to your GitHub portfolio repo. New to git? The template repo has a one-time walkthrough. <a href="/media-policy/">Read the media policy</a> before adding any photos.</p>
@@ -54,14 +67,14 @@ const num = project.id.slice(1);
       <h2>3 · Link and verify it</h2>
       <p>Paste the <strong>raw</strong> URL of your entry's README (e.g. <code>raw.githubusercontent.com/you/repo/main/projects/…/README.md</code>).</p>
       <p class="row">
-        <input type="url" id="entry-url" placeholder="https://raw.githubusercontent.com/…/README.md" />
-        <button class="btn" id="verify">Verify</button>
+        <input type="url" id="entry-url" placeholder="https://raw.githubusercontent.com/…/README.md" disabled={planned} />
+        <button class="btn" id="verify" disabled={planned}>Verify</button>
       </p>
       <p class="status" id="verify-status" role="status"></p>
       <details class="attest">
         <summary>Private repo? Self-attest instead.</summary>
         <p>A private repo is fully supported and worth exactly as much. Tick this to record it as done on your honour — the honesty is for you.</p>
-        <label><input type="checkbox" id="attest-box" /> I am recording this entry as real and complete.</label>
+        <label><input type="checkbox" id="attest-box" disabled={planned} /> I am recording this entry as real and complete.</label>
       </details>
     </li>
 
@@ -70,7 +83,7 @@ const num = project.id.slice(1);
       <p>Tick these off honestly as your entry covers them.</p>
       <ul class="rubric" id="rubric">
         {project.rubric.map((r) => (
-          <li><label><input type="checkbox" data-field={r.field} /> {r.label}</label></li>
+          <li><label><input type="checkbox" data-field={r.field} disabled={planned} /> {r.label}</label></li>
         ))}
       </ul>
     </li>
@@ -78,9 +91,9 @@ const num = project.id.slice(1);
     <li class="card step">
       <h2>5 · Design review</h2>
       <p>Two questions about your writeup. Answering them well is the point — a real reviewer would ask exactly these.</p>
-      <button class="btn btn-quiet" id="probe">Get review questions</button>
+      <button class="btn btn-quiet" id="probe" disabled={planned}>Get review questions</button>
       <div id="probes" hidden></div>
-      <button class="btn" id="save-probes" hidden>Save answers</button>
+      <button class="btn" id="save-probes" hidden disabled={planned}>Save answers</button>
     </li>
   </ol>
 
@@ -114,8 +127,21 @@ const num = project.id.slice(1);
       simPassedAt: rec.simPassedAt || null, generatedAt: new Date().toISOString() };
   }
 
+  // A planned project has no module to build it in, so nothing on this page can
+  // be actioned. The controls are already rendered disabled server-side; this
+  // stops paint() from re-enabling "Mark project complete" or showing a status
+  // the learner has no way to change.
+  const PLANNED = project.state === 'planned';
+
   function paint() {
     const rec = projectRecord(pid);
+    if (PLANNED) {
+      $('status').textContent = 'Planned';
+      $('status').dataset.state = 'planned';
+      $('complete').disabled = true;
+      $('complete-status').textContent = `Nothing to complete yet — Module ${project.module} hasn't been written.`;
+      return;
+    }
     $('status').textContent = LABELS[rec.status] || rec.status;
     $('status').dataset.state = rec.status;
     // rubric ticks
@@ -225,6 +251,8 @@ const num = project.id.slice(1);
   .proj-head { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
   .status-chip { font-size: 0.85rem; padding: 0.15rem 0.6rem; border-radius: 999px; border: 1px solid var(--grid, #d9e4ee); }
   .status-chip[data-state="complete"] { border-color: var(--go, #2fa36b); background: color-mix(in srgb, var(--go, #2fa36b) 14%, transparent); }
+  .status-chip[data-state="planned"] { border-style: dashed; }
+  .planned-note h2 { margin-top: 0; }
   .rigor-chip { color: var(--ink-soft, #4a5d74); font-size: 0.9rem; }
   .steps { list-style: none; padding: 0; margin: 1.2rem 0; display: flex; flex-direction: column; gap: 1rem; counter-reset: none; }
   .step h2 { margin-top: 0; }

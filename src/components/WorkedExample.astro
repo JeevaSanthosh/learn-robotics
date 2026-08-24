@@ -1,0 +1,132 @@
+---
+// "Here's one I did" (PRD-UX §6.3). A complete, correct solution to a
+// DIFFERENT instance of the skill the mission asks for.
+//
+// Three rules make this teach rather than spoil, and all three are structural:
+//
+//  1. DIFFERENT INSTANCE, never the mission. `variant` must say out loud what
+//     is different ("a 4-blink SOS, not your 3-blink mission"). C-EXAMPLE
+//     asserts the example's parameters differ from the lesson's mission, so
+//     copying it cannot pass.
+//  2. THE REASONING IS THE CONTENT. Every step carries `why`. A step list
+//     without reasoning is a walkthrough, and a walkthrough is the thing we
+//     are trying not to write.
+//  3. ONE STEP MUST FAIL. Mark it `fails: true`. Modelling the debug —
+//     "here is the bug everyone hits, here is how I saw it" — is the product's
+//     core bet (PRD §7), and a worked example where everything goes right
+//     teaches the opposite lesson.
+//
+// Steps are revealed one at a time. That is not decoration: seeing step 3
+// before you have read step 2's reasoning is how a learner ends up copying.
+//
+// Props:
+//   title    — what this example builds
+//   variant  — REQUIRED. How this differs from the learner's own mission.
+//   steps    — [{ do, why, code?, fails? }]  (>=2, and >=1 with fails: true)
+//
+// NOTE: "Load this into my editor" (PRD-UX §6.3 rule 3) is not wired here.
+// It needs a listener inside RobotLab, which lands with the lesson retrofit
+// rather than shipping a button that does nothing.
+const { title, variant, steps = [] } = Astro.props;
+
+if (!variant) throw new Error(`WorkedExample (${title}): "variant" is required — it must say how this differs from the learner's mission`);
+if (steps.length < 2) throw new Error(`WorkedExample (${title}): needs at least 2 steps`);
+if (!steps.some((s) => s.fails)) throw new Error(`WorkedExample (${title}): at least one step must be marked { fails: true } — a worked example where nothing goes wrong teaches the wrong lesson`);
+if (steps.some((s) => !s.why)) throw new Error(`WorkedExample (${title}): every step needs a "why" — the reasoning is the content`);
+---
+<section class="wex card">
+  <p class="eyebrow">Worked example</p>
+  <h3 class="wex-title">{title}</h3>
+  <p class="wex-variant"><strong>Note:</strong> {variant}</p>
+
+  <ol class="wex-steps">
+    {steps.map((s, i) => (
+      <li class:list={['wex-step', { 'is-fail': s.fails }]} data-step={i} hidden={i > 0}>
+        <p class="wex-do"><span class="wex-n">{i + 1}</span>{s.do}</p>
+        {s.code && <pre class="wex-code"><code>{s.code}</code></pre>}
+        <p class="wex-why">{s.fails ? '💥 ' : ''}{s.why}</p>
+      </li>
+    ))}
+  </ol>
+
+  <div class="wex-nav">
+    <button class="btn btn-quiet btn-sm wex-more" type="button">Next step →</button>
+    <button class="btn btn-quiet btn-sm wex-all" type="button">Show all</button>
+    <span class="wex-count eyebrow" role="status"></span>
+  </div>
+</section>
+
+<script>
+  for (const root of document.querySelectorAll('.wex')) {
+    const steps = [...root.querySelectorAll('.wex-step')];
+    const more = root.querySelector('.wex-more');
+    const all = root.querySelector('.wex-all');
+    const count = root.querySelector('.wex-count');
+    let shown = 1;
+
+    function paint() {
+      steps.forEach((s, i) => { s.hidden = i >= shown; });
+      count.textContent = `${Math.min(shown, steps.length)} of ${steps.length}`;
+      const done = shown >= steps.length;
+      // `hidden` wins over any display rule — see the [hidden] note in global.css.
+      more.hidden = done;
+      all.hidden = done;
+    }
+
+    more.addEventListener('click', () => {
+      shown = Math.min(shown + 1, steps.length);
+      paint();
+      steps[shown - 1]?.querySelector('.wex-do')?.focus?.();
+    });
+
+    all.addEventListener('click', () => { shown = steps.length; paint(); });
+
+    paint();
+  }
+</script>
+
+<style>
+  .wex { margin: 1.6rem 0; }
+  .wex-title { margin: 0.1rem 0 0.3rem; }
+  .wex-variant {
+    font-size: 0.92rem;
+    color: var(--ink-soft);
+    margin: 0 0 1rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--grid);
+  }
+
+  .wex-steps { list-style: none; padding: 0; margin: 0; }
+  .wex-step { margin: 0 0 1.1rem; }
+
+  .wex-do { display: flex; gap: 0.6rem; align-items: baseline; font-weight: 700; margin: 0 0 0.4rem; }
+  .wex-n {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--paper);
+    background: var(--ink);
+    border-radius: 50%;
+    width: 1.5rem; height: 1.5rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .wex-code { font-size: 0.82rem; margin: 0.4rem 0 0.4rem 2.1rem; }
+
+  .wex-why {
+    margin: 0 0 0 2.1rem;
+    color: var(--ink-soft);
+    font-size: 0.94rem;
+    border-left: 3px solid var(--grid);
+    padding-left: 0.8rem;
+  }
+
+  /* The failing step is the most valuable one on the page, so it is marked
+     rather than hidden — amber, not red: nothing has gone wrong, this is the
+     part where you learn something. */
+  .is-fail .wex-n { background: var(--led); color: #17293e; }
+  .is-fail .wex-why { border-left-color: var(--led); color: var(--ink); }
+
+  .wex-nav { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+  .wex-count { margin-left: auto; }
+</style>

@@ -1,0 +1,133 @@
+---
+// Definition of done, stated BEFORE the editor (PRD-UX §6.2).
+//
+// The cheapest fix in the UX PRD: a learner should never start a task without
+// knowing what finishing looks like, in their own language. Three properties
+// make this teach rather than decorate:
+//
+//  1. `done` entries are the SAME strings the grader reports on, so "what's
+//     expected" and "what was graded" are literally one list.
+//  2. `notDone` names the shortcut in advance. m5-obstacle-course currently
+//     patches this in code (it requires the sensor block be *present*);
+//     saying the standard out loud is better teaching than detecting the cheat.
+//  3. Ticks persist via recordExercise(), so a returning learner sees where
+//     they got to.
+//
+// Props:
+//   lessonId  — slug, used to namespace the tick ids
+//   goal      — one sentence: what the finished thing does
+//   done      — string[]  what "done" looks like  (required, >=1)
+//   notDone   — string[]  what does NOT count     (optional)
+//   time      — e.g. "20 min"
+//   stuck     — one nudge, shown behind a disclosure
+const { lessonId, goal, done = [], notDone = [], time = '', stuck = '' } = Astro.props;
+
+if (!lessonId) throw new Error('Expect: lessonId is required');
+if (!goal) throw new Error(`Expect (${lessonId}): goal is required`);
+if (!done.length) throw new Error(`Expect (${lessonId}): at least one "done" entry is required`);
+---
+<section class="expect card card-do" data-lesson={lessonId} aria-labelledby={`expect-h-${lessonId}`}>
+  <p class="eyebrow" id={`expect-h-${lessonId}`}>
+    What&rsquo;s expected{time && <span class="ex-time"> · {time}</span>}
+  </p>
+
+  <p class="ex-goal">{goal}</p>
+
+  <p class="eyebrow ex-sub">You&rsquo;re done when</p>
+  <ul class="ex-list">
+    {done.map((d, i) => (
+      <li>
+        <label>
+          <input type="checkbox" data-tick={`${lessonId}::done::${i}`} />
+          <span>{d}</span>
+        </label>
+      </li>
+    ))}
+  </ul>
+
+  {notDone.length > 0 && (
+    <>
+      <p class="eyebrow ex-sub">That doesn&rsquo;t count if</p>
+      <ul class="ex-list ex-not">
+        {notDone.map((n) => <li><span>{n}</span></li>)}
+      </ul>
+    </>
+  )}
+
+  {stuck && (
+    <details class="ex-stuck">
+      <summary>Not clicking? One nudge.</summary>
+      <p>{stuck}</p>
+    </details>
+  )}
+
+  <p class="ex-progress" role="status"></p>
+</section>
+
+<script>
+  import { recordExercise, isExerciseDone } from '../lib/progress.js';
+
+  for (const root of document.querySelectorAll('.expect')) {
+    const boxes = [...root.querySelectorAll('input[data-tick]')];
+    const status = root.querySelector('.ex-progress');
+
+    function paint() {
+      const n = boxes.filter((b) => b.checked).length;
+      status.textContent = n === boxes.length
+        ? `All ${boxes.length} ticked — that's the bar met.`
+        : `${n} of ${boxes.length} ticked`;
+    }
+
+    for (const box of boxes) {
+      // Restore. recordExercise() is append-only, so a tick is never lost by a
+      // reload and un-ticking is deliberately local-only — the checklist is a
+      // thinking aid, not a grade.
+      if (isExerciseDone(box.dataset.tick)) box.checked = true;
+      box.addEventListener('change', () => {
+        if (box.checked) recordExercise(box.dataset.tick);
+        paint();
+      });
+    }
+    paint();
+  }
+</script>
+
+<style>
+  .expect { margin: 1.6rem 0; }
+  .ex-time { text-transform: none; letter-spacing: 0; }
+  .ex-goal { font-size: 1.05rem; font-weight: 700; margin: 0.2rem 0 1rem; }
+  .ex-sub { margin: 0.9rem 0 0.3rem; }
+
+  .ex-list { list-style: none; padding: 0; margin: 0; }
+  .ex-list li { margin: 0.3rem 0; }
+  .ex-list label { display: flex; gap: 0.55rem; align-items: flex-start; cursor: pointer; }
+  .ex-list input { margin-top: 0.35rem; flex-shrink: 0; }
+
+  /* "That doesn't count if" — same shape, opposite meaning, so it needs a
+     different mark. A cross rule rather than a red fill: this is a caution,
+     not an error the learner has made. */
+  .ex-not li {
+    display: flex;
+    gap: 0.55rem;
+    color: var(--ink-soft);
+    padding-left: 0.1rem;
+  }
+  .ex-not li::before {
+    content: '✕';
+    color: var(--danger);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .ex-stuck { margin-top: 0.9rem; font-size: 0.94rem; }
+  .ex-stuck summary { cursor: pointer; color: var(--wire); }
+  .ex-stuck p { margin: 0.4rem 0 0; color: var(--ink-soft); }
+
+  .ex-progress {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin: 0.9rem 0 0;
+    min-height: 1.2em;
+  }
+</style>

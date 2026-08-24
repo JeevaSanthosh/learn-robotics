@@ -6,24 +6,53 @@ order: 1
 duration: 10
 checkpoint: false
 summary: "What a robot actually is, and a tour of the one you'll be programming."
-quarter: 1
 rigor: 1
 kind: concept
 teaches: ["core.robot-loop", "core.sequence"]
 ---
 import Term from '../../components/Term.astro';
 import MarkDone from '../../components/MarkDone.astro';
+import Quiz from '../../components/Quiz.astro';
+import Hook from '../../components/Hook.astro';
+import ConceptDemo from '../../components/ConceptDemo.astro';
 
-A <Term id="robot">robot</Term> is any machine that does three things in a loop: it **senses**, it **decides**, and it **acts**.
+<Hook
+  question="What actually makes something a robot, and not just a machine?"
+  answer="A washing machine follows a timer. A robot looks at the world first. That one difference is everything, and you can watch it happen below."
+/>
 
-Your simulated robot down there 👇 has all three:
+A <Term id="robot">robot</Term> is any machine that does three things, over and over: it **senses**, it **decides**, and it **acts**.
 
-- A <Term id="sensor">sensor</Term> on its nose that measures distance to walls.
-- A tiny computer brain that runs *your* program.
-- Two wheels and an <Term id="led">LED</Term> — its <Term id="actuator">actuators</Term>, the parts that actually *do* things.
+Don't take that on trust — step through it. Drag the wall closer and further, and watch what changes at each stage.
 
-That's the whole secret of robotics. Everything else in this course is just getting better at those three steps.
+<ConceptDemo
+  demo="loop"
+  caption="Press the ▶ ◀ arrow keys on the 'Step through the loop' slider to walk the robot through one full pass. Then the thing worth doing: park it on DECIDE, and drag the wall back and forth across the red stop line. Nothing about the robot changes — only the number does, and the decision flips with it."
+/>
 
-**Next lesson:** you make the LED blink. It's the "hello!" of every robot ever built.
+That third slider is the interesting one. **You** chose where the stop line goes. The robot doesn't know what a wall is, or what "too close" means — it knows one number and one comparison, and you decided what the comparison should be.
+
+That is the actual job. Not building the machine — deciding what it should do with what it sees.
+
+<Quiz
+  quizId="m1-meet"
+  questions={[
+    { "q": "In the demo, what made the robot change its mind about driving forward?", "options": ["the wall got bigger", "the number from the sensor crossed the stop line", "the robot got tired"], "answer": 1, "why": "Only the number changed. The robot compares it to your stop line — that comparison is the whole 'decide' stage." },
+    { "q": "Which part of sense → decide → act can someone standing in the room actually see?", "options": ["sense", "decide", "act"], "answer": 2, "why": "Sensing and deciding are invisible. Acting is the only part that shows — which is why a robot that 'does nothing' is usually still sensing and deciding perfectly well." },
+    { "q": "Who decided that 10 cm was 'too close'?", "options": ["the sensor", "the robot's brain", "you did"], "answer": 2, "why": "You set the threshold. The robot has no idea what a wall is or what counts as too close — that judgement is yours, and putting it into the machine is the job." }
+  ]}
+/>
+
+## The one you'll be programming
+
+Your simulated robot has all three parts:
+
+- A <Term id="sensor">sensor</Term> on its nose that measures distance to walls — that's **sense**.
+- A tiny computer brain that runs *your* program — that's **decide**.
+- Two wheels and an <Term id="led">LED</Term> — its <Term id="actuator">actuators</Term>, the parts that actually *do* things — that's **act**.
+
+Everything else in this course is getting better at those three steps. Sharper senses, better decisions, more precise actions — but always that loop, always in that order.
+
+**Next lesson:** you make the LED blink. It's the "hello!" of every robot ever built, and it's the *act* stage on its own — no sensing, no deciding, just one part moving because you said so.
 
 <MarkDone lessonId="m1-meet" />

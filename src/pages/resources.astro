@@ -2,6 +2,13 @@
 import Base from '../layouts/Base.astro';
 import resources from '../../public/resources.json';
 const modules = Object.entries(resources.modules);
+const WHEN_LABEL = {
+  before: 'open before the lesson',
+  during: 'open during the lesson',
+  after: 'open after you’ve built it',
+  stuck: 'open if you get stuck',
+  further: 'optional, go deeper',
+};
 ---
 <Base title="Resources">
   <h1>Curated resources</h1>
@@ -17,8 +24,12 @@ const modules = Object.entries(resources.modules);
         {items.map((r) => (
           <li>
             <a href={r.url} rel="noopener">{r.title}</a>
-            <span class="meta">{r.type} · published {r.published} · last checked {r.checked}</span>
+            <span class="meta">
+              <b>{r.type} · {r.minutes} min · {WHEN_LABEL[r.when] ?? r.when}</b>
+              <span class="dates">last checked {r.checked} <span class="pub">(published {r.published})</span></span>
+            </span>
             <p class="why">{r.why}</p>
+            <p class="adds"><b>Adds:</b> {r.adds}</p>
           </li>
         ))}
       </ul>
@@ -29,5 +40,9 @@ const modules = Object.entries(resources.modules);
 <style>
   .res-mod { margin-bottom: 1.2rem; }
   .meta { display: block; font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); }
-  .why { margin: 0.2rem 0 0.8rem; font-size: 0.92rem; }
+  .meta b { font-weight: 600; color: var(--ink); }
+  .dates { display: block; }
+  .pub { opacity: 0.55; }
+  .why { margin: 0.2rem 0 0.2rem; font-size: 0.92rem; }
+  .adds { margin: 0 0 0.8rem; font-size: 0.92rem; }
 </style>

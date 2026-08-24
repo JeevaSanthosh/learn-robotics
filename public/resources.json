@@ -1,42 +1,231 @@
 {
-  "_comment": "Curated external resources per module. The monthly freshness workflow proposes edits via PR (lychee verifies liveness; the LLM only proposes; zod + this allowlist validate). 'published' = the source's own date (best known); 'checked' = last verification.",
+  "_comment": "Curated external resources per module. Resources are CONTEXTUAL, not bookmarks: every entry names the lesson it supports and the moment to open it. Fields — 'lesson': a slug from src/content/modules/*.mdx, or null when it belongs to the module generally. 'when': before (warm up) | during (see it for real at a specific beat) | after (now that you've built it) | stuck (a SECOND explanation in another voice, surfaced after two failed runs) | further (optional depth on the module page). 'minutes': realistic read/watch time. 'adds': what this gives that the lesson cannot — not a summary. 'thumb': local '/thumbs/<slug>.webp' for type video only (forward declaration; the image assets land in a later phase), null otherwise. Third-party block editors and simulators are ALWAYS 'further' — never offered inline mid-lesson, because they are competing products. 'published' = the source's own date (best known; approximate for continuously-updated wikis and documentation roots); 'checked' = last verification. An entry whose link a human still has to supply carries 'url': null plus 'status': \"needs-url\" — it must never be rendered as a link. The monthly freshness workflow proposes edits via PR (lychee verifies liveness; the LLM only proposes; zod + this allowlist validate).",
   "modules": {
     "m1": [
       {
         "title": "How do ROBOTS work? — Argo's World (STEM for kids & teens)",
         "url": "https://www.youtube.com/watch?v=CrQ5atmjSqQ",
         "type": "video",
+        "lesson": "m1-meet",
+        "when": "before",
+        "minutes": 6,
         "published": "2020-09-11",
-        "checked": "2026-08-07",
-        "why": "Friendly sense-think-act tour with zero assumed knowledge — matches lesson 1's framing exactly."
+        "checked": "2026-08-23",
+        "why": "Friendly sense-think-act tour with zero assumed knowledge — matches lesson 1's framing exactly.",
+        "adds": "Shows real machines running sense-decide-act before you touch the simulator, so the loop reads as a fact about the world rather than a rule this app invented.",
+        "thumb": "/thumbs/m1-argos-world.webp"
+      },
+      {
+        "title": "Robot — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Robot",
+        "type": "article",
+        "lesson": "m1-meet",
+        "when": "after",
+        "minutes": 8,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "A wide, plainly-written survey of what counts as a robot, readable straight after the first lesson.",
+        "adds": "Sets the one robot you just met beside factory arms, rovers and surgical arms, so 'robot' stops meaning 'the thing on my screen'.",
+        "thumb": null
+      },
+      {
+        "title": "Light-emitting diode — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Light-emitting_diode",
+        "type": "article",
+        "lesson": "m1-blink",
+        "when": "after",
+        "minutes": 6,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "The physical story behind the block you just switched on and off.",
+        "adds": "Explains why a real LED only lets current through one way — the lesson makes it blink, this says what is actually happening inside it.",
+        "thumb": null
+      },
+      {
+        "title": "Turtle graphics — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Turtle_graphics",
+        "type": "article",
+        "lesson": "m1-turn",
+        "when": "stuck",
+        "minutes": 5,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "The same forward-and-turn idea told as drawing rather than driving — a fresh angle when the target pad keeps getting missed.",
+        "adds": "Re-teaches steering as a pen tracing a path on paper, a completely different mental picture for the same move-then-turn plan.",
+        "thumb": null
       },
       {
         "title": "Blockly Games — puzzle your way into blocks",
         "url": "https://blockly.games/",
         "type": "tool",
+        "lesson": null,
+        "when": "further",
+        "minutes": 20,
         "published": "2024-01-01",
-        "checked": "2026-08-07",
-        "why": "Free extra reps with the same block style our editor uses; Maze level pairs perfectly with Module 1."
+        "checked": "2026-08-23",
+        "why": "Free extra reps with the same block style our editor uses; Maze level pairs perfectly with Module 1.",
+        "adds": "Optional drilling on block-snapping muscle memory in a separate editor — worth a look once Module 1 is finished, not while you are in it.",
+        "thumb": null
       }
     ],
     "m2": [
       {
+        "title": "For loop — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/For_loop",
+        "type": "article",
+        "lesson": "m2-loops",
+        "when": "before",
+        "minutes": 6,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "Warms up the repeat idea with the word professionals use for it, before the zig-zag mission asks for one.",
+        "adds": "Shows the same repeat block written as text code in half a dozen real languages, so the block reads as a translation rather than a toy.",
+        "thumb": null
+      },
+      {
+        "title": "BBC micro:bit coding in 60 seconds — Creating Loops (Kitronik)",
+        "url": "https://www.youtube.com/watch?v=jkBTn--HepY",
+        "type": "video",
+        "lesson": "m2-loops",
+        "when": "stuck",
+        "minutes": 1,
+        "published": "2024-04-30",
+        "checked": "2026-08-23",
+        "why": "Sixty seconds, spoken aloud, showing a loop block being built — the fastest possible second opinion after a failed run.",
+        "adds": "Says the loop idea out loud while the blocks move on screen, a different channel entirely from the lesson's written explanation, and it is over before frustration can build.",
+        "thumb": "/thumbs/m2-microbit-loops-60-seconds.webp"
+      },
+      {
+        "title": "Persistence of vision — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Persistence_of_vision",
+        "type": "article",
+        "lesson": "m2-light-show",
+        "when": "after",
+        "minutes": 6,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "Why a fast enough blink stops looking like a blink — the trick behind every screen and light show.",
+        "adds": "Answers the question the light show provokes but never addresses: what happens to your pattern once you shorten the wait past the point your eyes can follow.",
+        "thumb": null
+      },
+      {
+        "title": "Iteration & Looping — MakeCode CS Intro course",
+        "url": "https://makecode.microbit.org/courses/csintro/iteration",
+        "type": "docs",
+        "lesson": "m2-loops",
+        "when": "further",
+        "minutes": 15,
+        "published": "2018-01-01",
+        "checked": "2026-08-23",
+        "why": "A full teaching unit on iteration, written for classrooms, if one module's worth of loops left you wanting more.",
+        "adds": "Separates the loop family — repeat, forever, while, for — into distinct tools with worked demos, where this module only ships the counted one.",
+        "thumb": null
+      },
+      {
+        "title": "Control flow — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Control_flow",
+        "type": "article",
+        "lesson": null,
+        "when": "further",
+        "minutes": 10,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "The whole family of order-changing constructs, of which the repeat block is one member.",
+        "adds": "Maps out the loops, branches and jumps you have not met yet, so Module 2's single loop gets a visible place in a bigger system.",
+        "thumb": null
+      },
+      {
         "title": "Blockly Games: Maze (loops in action)",
         "url": "https://blockly.games/maze",
         "type": "tool",
+        "lesson": null,
+        "when": "further",
+        "minutes": 25,
         "published": "2024-01-01",
-        "checked": "2026-08-07",
-        "why": "Ten escalating loop puzzles — ideal optional practice after the zig-zag mission."
+        "checked": "2026-08-23",
+        "why": "Ten escalating loop puzzles — ideal optional practice after the zig-zag mission.",
+        "adds": "Ten more loop puzzles at rising difficulty, for when the module's two missions were not enough repetitions to make loops feel automatic.",
+        "thumb": null
       }
     ],
     "m3": [
       {
+        "title": "Sensor — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Sensor",
+        "type": "article",
+        "lesson": "m3-sensing",
+        "when": "before",
+        "minutes": 8,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "A short warm-up on what a sensor is before the green distance block appears.",
+        "adds": "Shows that every sensor — heat, light, tilt, distance — does the one job of turning part of the world into a number, which is the move the whole lesson depends on.",
+        "thumb": null
+      },
+      {
+        "title": "How Do Ultrasonic Distance Sensors Work? — The Learning Circuit",
+        "url": "https://www.youtube.com/watch?v=2ojWO1QNprw",
+        "type": "video",
+        "lesson": "m3-sensing",
+        "when": "during",
+        "minutes": 9,
+        "published": "2021-01-27",
+        "checked": "2026-08-23",
+        "why": "Watch this at the moment the faint sensor ray first appears on the robot's nose.",
+        "adds": "Puts a real sensor on a bench and measures with it, so you see where the distance number comes from — a chirp, an echo and a stopwatch — which the simulator hands you for free and never shows.",
+        "thumb": "/thumbs/m3-ultrasonic-learning-circuit.webp"
+      },
+      {
+        "title": "Conditional (computer programming) — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Conditional_(computer_programming)",
+        "type": "article",
+        "lesson": "m3-sensing",
+        "when": "after",
+        "minutes": 7,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "The if-block, generalised, once you have dropped a sensor reading into one.",
+        "adds": "Introduces else, else-if and switch — the branches the lesson's single if-block hints at but does not hand you yet.",
+        "thumb": null
+      },
+      {
+        "title": "Circuit 3B: Distance Sensor — SparkFun Inventor's Kit Guide",
+        "url": "https://learn.sparkfun.com/tutorials/sparkfun-inventors-kit-experiment-guide---v41/circuit-3b-distance-sensor",
+        "type": "article",
+        "lesson": "m3-wall-stop",
+        "when": "stuck",
+        "minutes": 12,
+        "published": "2019-01-01",
+        "checked": "2026-08-23",
+        "why": "The same stop-before-you-hit-it problem, walked through step by step in a different voice, for a learner whose wall-stop run keeps failing.",
+        "adds": "Works the threshold logic in the opposite direction — real wiring first, then the comparison that acts on the reading — so the idea arrives from the hardware side instead of the block side.",
+        "thumb": null
+      },
+      {
+        "title": "Arduino Documentation — official docs",
+        "url": "https://docs.arduino.cc/",
+        "type": "docs",
+        "lesson": null,
+        "when": "further",
+        "minutes": 10,
+        "published": "2025-01-01",
+        "checked": "2026-08-23",
+        "why": "The canonical reference for the boards and sensors this module simulates.",
+        "adds": "Shows what reading a real distance sensor actually costs you — pins, timing, libraries — none of which the green block makes you think about.",
+        "thumb": null
+      },
+      {
         "title": "Wokwi — free in-browser Arduino & MicroPython simulator",
         "url": "https://wokwi.com/",
         "type": "tool",
+        "lesson": null,
+        "when": "further",
+        "minutes": 20,
         "published": "2025-01-01",
-        "checked": "2026-08-07",
-        "why": "See a REAL ultrasonic distance sensor wired to a simulated board — the grown-up version of our green sensor block."
+        "checked": "2026-08-23",
+        "why": "See a REAL ultrasonic distance sensor wired to a simulated board — the grown-up version of our green sensor block.",
+        "adds": "Lets you wire the grown-up version of the green block yourself, with real pins and real code — a separate simulator, so save it for after the module.",
+        "thumb": null
       }
     ],
     "m4": [
@@ -44,35 +233,159 @@
         "title": "What is a Circuit? — SparkFun",
         "url": "https://learn.sparkfun.com/tutorials/what-is-a-circuit/all",
         "type": "article",
+        "lesson": "m4-circuits",
+        "when": "during",
+        "minutes": 12,
         "published": "2013-02-01",
-        "checked": "2026-08-07",
-        "why": "The classic illustrated circuits explainer, with a live current-flow simulation link. Old but definitive."
+        "checked": "2026-08-23",
+        "why": "The classic illustrated circuits explainer, with a live current-flow simulation link. Old but definitive.",
+        "adds": "Hands you a current-flow simulation you can poke and deliberately break, which a page of prose about loops of electricity cannot.",
+        "thumb": null
+      },
+      {
+        "title": "Ohm's law — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Ohm%27s_law",
+        "type": "article",
+        "lesson": "m4-circuits",
+        "when": "after",
+        "minutes": 8,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "Turns the water-hose analogy into the one equation that lets you predict a circuit instead of just describing it.",
+        "adds": "Makes voltage and current calculable rather than merely nameable, which is the step from understanding a circuit to designing one.",
+        "thumb": null
       },
       {
         "title": "Gears — how do they work? (Explain That Stuff)",
         "url": "https://www.explainthatstuff.com/gears.html",
         "type": "article",
+        "lesson": "m4-motors-gears",
+        "when": "during",
+        "minutes": 10,
         "published": "2025-02-27",
-        "checked": "2026-08-07",
-        "why": "Plain-English speed-vs-torque explanation with everyday examples; recently updated."
+        "checked": "2026-08-23",
+        "why": "Plain-English speed-vs-torque explanation with everyday examples; recently updated.",
+        "adds": "Walks through several real gear trains — clocks, drills, bikes — so the speed-for-strength trade stops being one bicycle sentence.",
+        "thumb": null
       },
       {
         "title": "Gears Explained — mechanical engineering (video)",
         "url": "https://www.youtube.com/watch?v=4ROtKKuSaBI",
         "type": "video",
+        "lesson": "m4-motors-gears",
+        "when": "stuck",
+        "minutes": 9,
         "published": "2021-07-17",
-        "checked": "2026-08-07",
-        "why": "Clear animated gear-ratio and torque walkthrough if the article's diagrams aren't enough."
+        "checked": "2026-08-23",
+        "why": "Clear animated gear-ratio and torque walkthrough if the article's diagrams aren't enough.",
+        "adds": "Animates the teeth actually meshing and counting round, which is the part static diagrams lose and the exact part that makes a gear ratio click.",
+        "thumb": "/thumbs/m4-gears-explained.webp"
+      },
+      {
+        "title": "Electric motor — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Electric_motor",
+        "type": "article",
+        "lesson": "m4-motors-gears",
+        "when": "after",
+        "minutes": 10,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "What is inside the thing the gears are bolted to, once you know why the gears are there at all.",
+        "adds": "Joins this module's two halves — it is the piece showing electricity becoming the spin that gears then trade away for strength.",
+        "thumb": null
+      },
+      {
+        "title": "Adafruit Learn — build guides for real parts",
+        "url": "https://learn.adafruit.com/",
+        "type": "docs",
+        "lesson": null,
+        "when": "further",
+        "minutes": 15,
+        "published": "2025-01-01",
+        "checked": "2026-08-23",
+        "why": "A deep, beginner-friendly library of wiring and soldering guides for the parts in this module.",
+        "adds": "Turns this module's concepts into shopping lists and step-by-step wiring photos, for when you want one of these on the desk in front of you.",
+        "thumb": null
       }
     ],
     "m5": [
       {
+        "title": "Event-driven programming — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Event-driven_programming",
+        "type": "article",
+        "lesson": "m5-events",
+        "when": "before",
+        "minutes": 8,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "Names the shift from 'runs top to bottom' to 'waits and responds' just before the hat block introduces it.",
+        "adds": "Shows that the hat block is how nearly all real software is organised — apps, games, websites — and not a robot-only convention.",
+        "thumb": null
+      },
+      {
+        "title": "Mobile robot — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Mobile_robot",
+        "type": "article",
+        "lesson": "m5-obstacle-course",
+        "when": "during",
+        "minutes": 10,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "The category your obstacle-course robot belongs to, read while you are still building it.",
+        "adds": "Lays out the navigation strategies real robots choose between, which is useful precisely while you are inventing your own for the maze.",
+        "thumb": null
+      },
+      {
+        "title": "How Engineering Robots Works — Crash Course Engineering #33",
+        "url": "https://www.youtube.com/watch?v=uNfUAJBuZ0s",
+        "type": "video",
+        "lesson": "m5-obstacle-course",
+        "when": "stuck",
+        "minutes": 11,
+        "published": "2019-01-24",
+        "checked": "2026-08-23",
+        "why": "A brisk, well-produced retelling of sensors, control and actuators as one machine — the second voice to reach for when the final mission will not come together.",
+        "adds": "Re-explains the whole sense-decide-act loop from an engineer's angle rather than a programmer's, which is often the framing that unsticks a program that is failing for reasons the blocks do not show.",
+        "thumb": "/thumbs/m5-crash-course-robots.webp"
+      },
+      {
+        "title": "Debugging — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Debugging",
+        "type": "article",
+        "lesson": "m5-obstacle-course",
+        "when": "after",
+        "minutes": 8,
+        "published": "2026-01-01",
+        "checked": "2026-08-23",
+        "why": "Puts a name and a method to the thing you just spent an hour doing.",
+        "adds": "Turns the trial and error you just lived through into a named, repeatable technique you can reach for deliberately next time.",
+        "thumb": null
+      },
+      {
+        "title": "micro:bit — the real board behind these blocks",
+        "url": "https://microbit.org/",
+        "type": "docs",
+        "lesson": null,
+        "when": "further",
+        "minutes": 10,
+        "published": "2025-01-01",
+        "checked": "2026-08-23",
+        "why": "The official home of the pocket-sized board whose event model this module borrows.",
+        "adds": "Shows the physical board — buttons, shake, sound — whose events these hat blocks are modelled on, and what it costs to actually own one.",
+        "thumb": null
+      },
+      {
         "title": "micro:bit MakeCode — events playground",
         "url": "https://makecode.microbit.org/",
         "type": "tool",
+        "lesson": "m5-events",
+        "when": "further",
+        "minutes": 20,
         "published": "2025-06-01",
-        "checked": "2026-08-07",
-        "why": "Blocks with MANY event hats (button A, shake, sound) plus a built-in simulator — the bridge to real hardware."
+        "checked": "2026-08-23",
+        "why": "Blocks with MANY event hats (button A, shake, sound) plus a built-in simulator — the bridge to real hardware.",
+        "adds": "Offers far more event hats than this course ships and downloads straight to real hardware — a separate editor, so open it after the module, never during.",
+        "thumb": null
       }
     ],
     "go-physical": [
@@ -80,9 +393,14 @@
         "title": "Wokwi — keep simulating while you wait for parts",
         "url": "https://wokwi.com/",
         "type": "tool",
+        "lesson": null,
+        "when": "further",
+        "minutes": 20,
         "published": "2025-01-01",
-        "checked": "2026-08-07",
-        "why": "The doc's promise kept: the simulator path stays open if hardware isn't accessible yet."
+        "checked": "2026-08-23",
+        "why": "The doc's promise kept: the simulator path stays open if hardware isn't accessible yet.",
+        "adds": "Keeps the hands-on path open while the parts are still in the post, so a shipping delay never becomes a stopped course.",
+        "thumb": null
       }
     ]
   },
@@ -99,6 +417,7 @@
     "www.explainthatstuff.com",
     "docs.arduino.cc",
     "learn.adafruit.com",
-    "projects.raspberrypi.org"
+    "projects.raspberrypi.org",
+    "en.wikipedia.org"
   ]
 }

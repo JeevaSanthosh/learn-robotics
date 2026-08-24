@@ -1,0 +1,208 @@
+---
+// The manipulable explainer (PRD-UX §7.1). Original animation written as code:
+// no video files, no bandwidth, works offline, themes with the page — and the
+// thing video can never do, the learner can break it.
+//
+// Requirements this host enforces so individual demos cannot forget them:
+//   · DETERMINISTIC — compute() is pure; the same state always draws the same
+//     frame. Unit-tested in node without a canvas (scripts/test-demos.mjs).
+//   · MANIPULABLE — at least one control, or construction throws.
+//   · INSTRUMENTED — readouts sit beside the picture, so the demo and the
+//     lesson's equation are visibly the same thing.
+//   · KEYBOARD — controls are native <input type="range"> and <input
+//     type="checkbox">, so arrow keys work without a line of JS. Readouts are
+//     an aria-live region, so a screen-reader user hears the consequence.
+//   · REDUCED MOTION — there is no playback to suppress. Every frame is drawn
+//     in response to the learner's own input, which is why this design is
+//     preferable to an animation with a pause button.
+//
+// Props:
+//   demo    — id registered in src/lib/demos/index.js
+//   caption — what to look at, and what to try. Required: a demo with no
+//             instruction is a toy.
+import { getDemo } from '../lib/demos/index.js';
+
+const { demo: demoId, caption } = Astro.props;
+const demo = getDemo(demoId); // throws at build time on a typo
+
+if (!caption) throw new Error(`ConceptDemo (${demoId}): caption is required — say what to look at and what to try`);
+if (!demo.controls?.length) throw new Error(`ConceptDemo (${demoId}): a demo with no controls is not a demo`);
+---
+<figure class="cdemo card" data-demo={demoId}>
+  <div class="cd-grid">
+    <div class="cd-stage">
+      <canvas width="420" height="260" role="img" aria-label={`${demo.title} — values are given in the readouts below`}></canvas>
+    </div>
+
+    <div class="cd-panel">
+      <p class="eyebrow">{demo.title}</p>
+
+      <div class="cd-controls">
+        {demo.controls.map((c) => (
+          <label class="cd-ctrl">
+            <span class="cd-label">{c.label}</span>
+            {c.type === 'toggle' ? (
+              <input type="checkbox" data-key={c.key} checked={c.value} />
+            ) : (
+              <>
+                <input
+                  type="range"
+                  data-key={c.key}
+                  min={c.min}
+                  max={c.max}
+                  step={c.step}
+                  value={c.value}
+                />
+                <output data-out={c.key}>{c.value}{c.unit}</output>
+              </>
+            )}
+          </label>
+        ))}
+      </div>
+
+      <dl class="cd-readouts" aria-live="polite">
+        {demo.readouts.map((r) => (
+          <div class="cd-ro">
+            <dt>{r.label}</dt>
+            <dd data-read={r.key}>—</dd>
+          </div>
+        ))}
+      </dl>
+
+      <p class="cd-explain"></p>
+      <button class="btn btn-quiet btn-sm cd-reset" type="button">↺ Reset</button>
+    </div>
+  </div>
+
+  <figcaption>{caption}</figcaption>
+</figure>
+
+<script>
+  import { getDemo } from '../lib/demos/index.js';
+
+  /** Read the live theme tokens so the canvas repaints correctly in both themes. */
+  function readInk(el) {
+    const s = getComputedStyle(el);
+    const v = (n, fallback) => s.getPropertyValue(n).trim() || fallback;
+    return {
+      ink: v('--ink', '#17293e'),
+      soft: v('--ink-soft', '#4a5d74'),
+      card: v('--card', '#ffffff'),
+      led: v('--led', '#ffb93b'),
+      danger: v('--danger', '#c8503c'),
+      mono: v('--font-mono', 'monospace'),
+    };
+  }
+
+  for (const root of document.querySelectorAll('.cdemo')) {
+    const demo = getDemo(root.dataset.demo);
+    const canvas = root.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    const explain = root.querySelector('.cd-explain');
+
+    const defaults = Object.fromEntries(demo.controls.map((c) => [c.key, c.value]));
+    let state = { ...defaults };
+
+    function render() {
+      const computed = demo.compute(state);
+
+      for (const r of demo.readouts) {
+        const el = root.querySelector(`[data-read="${r.key}"]`);
+        if (!el) continue;
+        const val = computed[r.key];
+        el.textContent = r.unit ? `${val} ${r.unit}` : String(val);
+      }
+
+      for (const c of demo.controls) {
+        const out = root.querySelector(`[data-out="${c.key}"]`);
+        if (out) out.textContent = `${state[c.key]}${c.unit ?? ''}`;
+      }
+
+      explain.textContent = demo.explain ? demo.explain(state, computed) : '';
+
+      // Match the backing store to the CSS box so the drawing is crisp on
+      // high-DPI screens and correct after a resize.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      demo.draw(ctx, { state, computed, w, h, ink: readInk(root) });
+    }
+
+    for (const input of root.querySelectorAll('[data-key]')) {
+      input.addEventListener('input', () => {
+        state = {
+          ...state,
+          [input.dataset.key]: input.type === 'checkbox' ? input.checked : Number(input.value),
+        };
+        render();
+      });
+    }
+
+    root.querySelector('.cd-reset').addEventListener('click', () => {
+      state = { ...defaults };
+      for (const input of root.querySelectorAll('[data-key]')) {
+        const d = defaults[input.dataset.key];
+        if (input.type === 'checkbox') input.checked = d;
+        else input.value = String(d);
+      }
+      render();
+    });
+
+    // Repaint on theme flip and on resize — the canvas holds no CSS of its own.
+    new MutationObserver(render).observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-theme'],
+    });
+    if ('ResizeObserver' in window) new ResizeObserver(render).observe(canvas);
+
+    render();
+  }
+</script>
+
+<style>
+  .cdemo { margin: 1.6rem 0; padding: 1rem 1.1rem; }
+
+  .cd-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 720px) {
+    .cd-grid { grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr); align-items: start; }
+  }
+
+  .cd-stage { background: var(--card-sunk); border-radius: var(--radius); padding: 0.4rem; }
+  .cd-stage canvas { display: block; width: 100%; height: auto; aspect-ratio: 42 / 26; }
+
+  .cd-controls { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.4rem 0 0.9rem; }
+  .cd-ctrl { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.6rem; align-items: center; }
+  .cd-label { font-size: 0.9rem; }
+  .cd-ctrl input[type='range'] { grid-column: 1 / -1; width: 100%; accent-color: var(--led); }
+  .cd-ctrl output { font-family: var(--font-mono); font-size: 0.82rem; color: var(--ink-soft); }
+  .cd-ctrl input[type='checkbox'] { accent-color: var(--led); justify-self: end; }
+
+  .cd-readouts {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem;
+    margin: 0 0 0.6rem; padding-top: 0.7rem;
+    border-top: 1px solid var(--grid);
+  }
+  .cd-ro dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+  .cd-ro dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cd-explain { font-size: 0.9rem; color: var(--ink-soft); margin: 0 0 0.7rem; min-height: 2.4em; }
+
+  figcaption {
+    margin-top: 0.9rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--grid);
+    font-size: 0.92rem;
+    color: var(--ink-soft);
+  }
+</style>

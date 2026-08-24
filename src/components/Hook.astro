@@ -1,0 +1,59 @@
+---
+// Lesson opener (PRD-UX §6.1, part 1). Answers "why should I care?" in one
+// sentence, next to one thing that is not text.
+//
+// It exists because of a measured failure: every lesson currently opens with
+// prose, and two of twelve open with nothing but prose. A teenager's first
+// three seconds on a page decide whether there is a fourth.
+//
+// Deliberately dumb: no state, no script. The <slot /> takes whatever the
+// lesson wants to lead with — a <ConceptDemo>, a <VideoCard>, an inline SVG.
+// If a lesson has nothing visual to lead with, that is a content problem
+// C-PROSE-BREAK should catch, not something this component should paper over.
+//
+// Props:
+//   question — the hook, phrased as the learner's own question. Required.
+//   answer   — one sentence. Not a summary of the lesson; the reason to read it.
+const { question, answer } = Astro.props;
+
+if (!question) throw new Error('Hook: question is required');
+---
+<section class="hook">
+  <div class="hook-text">
+    <p class="hook-q">{question}</p>
+    {answer && <p class="hook-a">{answer}</p>}
+  </div>
+  <div class="hook-visual"><slot /></div>
+</section>
+
+<style>
+  .hook {
+    display: grid;
+    gap: 1rem;
+    margin: 0 0 1.8rem;
+    padding-bottom: 1.4rem;
+    border-bottom: 2px solid var(--grid);
+  }
+  @media (min-width: 720px) {
+    /* Text leads, visual sits beside it. Below 720px they stack, text first —
+       the question should never be pushed under the fold by its own picture. */
+    .hook { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  }
+
+  .hook-q {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.15rem, 2.6vw, 1.45rem);
+    line-height: 1.25;
+    text-wrap: balance;
+    margin: 0 0 0.4rem;
+  }
+  .hook-a { margin: 0; color: var(--ink-soft); }
+
+  /* Empty slot must not leave a gap on the grid. :empty is exact here because
+     the slot renders nothing at all when the lesson passes no children. */
+  .hook-visual:empty { display: none; }
+  .hook-visual :global(img),
+  .hook-visual :global(svg),
+  .hook-visual :global(canvas) { max-width: 100%; height: auto; }
+</style>
